@@ -8,7 +8,7 @@ export default function TrialBanner({ rapportsGeneres }: { rapportsGeneres: numb
   const isFinished = rapportsGeneres >= 2
 
   return (
-    <div className={`rounded-xl p-4 ${isFinished ? 'bg-gray-100' : 'bg-input-focus border border-primary/10'}`}>
+    <div role="status" aria-label={`${remaining} rapports restants sur 2`} className={`rounded-xl p-4 ${isFinished ? 'bg-gray-100' : 'bg-input-focus border border-primary/10'}`}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-medium text-foreground">
           {isFinished
