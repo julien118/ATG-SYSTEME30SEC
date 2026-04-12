@@ -8,6 +8,7 @@ import { useToast } from '@/components/ToastProvider'
 import PhotoCapture from '@/components/PhotoCapture'
 import AudioRecorder from '@/components/AudioRecorder'
 import CaptureItemComponent from '@/components/CaptureItem'
+import Spinner from '@/components/Spinner'
 import type { Chantier, CaptureItem, Profile } from '@/lib/types'
 
 interface VisiteClientProps {
@@ -114,6 +115,10 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
 
   // ---- AUDIO FLOW ----
   const handleRecordingComplete = useCallback(async (blob: Blob) => {
+    if (blob.size < 1000) {
+      toast.show('Enregistrement trop court', 'info')
+      return
+    }
     setUploading(true)
     try {
       const timestamp = Date.now()
@@ -210,8 +215,12 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
   }, [supabase])
 
   // ---- END VISIT ----
+  const [ending, setEnding] = useState(false)
+
   const handleEndVisit = async () => {
-    // Check trial limit
+    if (ending) return
+    setEnding(true)
+
     if (profile.rapports_generes >= 2) {
       router.push('/essai-termine')
       return
@@ -340,11 +349,12 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
               {'\n'}Générer le rapport ?
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setShowEndModal(false)} className="btn-tertiary flex-1">
+              <button onClick={() => setShowEndModal(false)} disabled={ending} className="btn-tertiary flex-1">
                 Continuer
               </button>
-              <button onClick={handleEndVisit} className="btn-primary flex-1">
-                Générer le rapport
+              <button onClick={handleEndVisit} disabled={ending} className="btn-primary flex-1 flex items-center justify-center gap-2">
+                {ending && <Spinner className="h-4 w-4" />}
+                {ending ? 'Redirection...' : 'Générer le rapport'}
               </button>
             </div>
           </div>
