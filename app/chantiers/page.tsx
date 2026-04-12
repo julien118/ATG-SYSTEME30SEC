@@ -17,6 +17,18 @@ export default async function ChantiersPage() {
     .eq('id', user.id)
     .single()
 
+  // Fallback profile if trigger didn't create one
+  const safeProfile: Profile = profile ? (profile as Profile) : {
+    id: user.id,
+    prenom: user.user_metadata?.prenom ?? '',
+    nom: user.user_metadata?.nom ?? '',
+    telephone: null,
+    metier: null,
+    entreprise: null,
+    rapports_generes: 0,
+    created_at: new Date().toISOString(),
+  }
+
   const { data: chantiers } = await supabase
     .from('chantiers')
     .select('*')
@@ -34,8 +46,8 @@ export default async function ChantiersPage() {
           height={26}
         />
         <UserMenu
-          prenom={(profile as Profile)?.prenom ?? ''}
-          nom={(profile as Profile)?.nom ?? ''}
+          prenom={safeProfile.prenom}
+          nom={safeProfile.nom}
         />
       </header>
 
@@ -43,7 +55,7 @@ export default async function ChantiersPage() {
       <main className="px-4 py-4 max-w-2xl mx-auto page-enter">
         <ChantiersList
           chantiers={(chantiers as Chantier[]) ?? []}
-          profile={profile as Profile}
+          profile={safeProfile}
         />
       </main>
     </div>
