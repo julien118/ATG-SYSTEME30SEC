@@ -116,7 +116,10 @@
 }
 
 @layer utilities {
-  /* Safe area bottom padding for fixed bottom bars */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
   }
@@ -124,4 +127,17 @@
   .mb-safe {
     margin-bottom: env(safe-area-inset-bottom);
   }
+
+  .skeleton {
+    @apply bg-gray-200 rounded-lg animate-pulse;
+  }
+
+  .page-enter {
+    animation: page-enter 0.25s ease-out;
+  }
+}
+
+@keyframes page-enter {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
 }

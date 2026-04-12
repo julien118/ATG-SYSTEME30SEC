@@ -45,6 +45,10 @@ const config: Config = {
           '0%, 100%': { boxShadow: '0 0 0 0 rgba(239, 68, 68, 0.7)' },
           '50%': { boxShadow: '0 0 0 12px rgba(239, 68, 68, 0)' },
         },
+        'slide-down': {
+          '0%': { transform: 'translateY(-100%)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
       },
       animation: {
         'slide-up': 'slide-up 0.3s ease-out',
@@ -52,6 +56,7 @@ const config: Config = {
         'fade-in': 'fade-in 0.2s ease-out',
         'card-appear': 'card-appear 0.25s ease-out',
         'pulse-record': 'pulse-record 1.5s ease-in-out infinite',
+        'slide-down': 'slide-down 0.3s ease-out',
       },
     },
   },

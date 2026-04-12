@@ -22,7 +22,7 @@ export default function DeleteChantierModal({ chantierNom, onConfirm, onCancel }
       <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
 
       {/* Modal */}
-      <div className="relative w-full sm:max-w-sm bg-white rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up sm:animate-scale-in">
+      <div className="relative w-full sm:max-w-sm bg-white rounded-t-2xl sm:rounded-2xl p-6 pb-safe animate-slide-up sm:animate-scale-in">
         <h3 className="text-lg font-bold text-foreground mb-2">
           Supprimer ce chantier ?
         </h3>

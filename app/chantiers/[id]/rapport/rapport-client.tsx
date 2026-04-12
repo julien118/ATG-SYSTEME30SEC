@@ -4,6 +4,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import ReportView from '@/components/ReportView'
+import Spinner from '@/components/Spinner'
+import { useToast } from '@/components/ToastProvider'
+import { fetchWithTimeout } from '@/lib/utils'
 import type { RapportContenu } from '@/lib/types'
 
 interface RapportClientProps {
@@ -28,6 +31,8 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
   const [error, setError] = useState('')
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [showPdfPreview, setShowPdfPreview] = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const toast = useToast()
   const generationStarted = useRef(false)
 
   const generate = useCallback(async () => {
@@ -44,11 +49,11 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
     }, 3000)
 
     try {
-      const res = await fetch('/api/generate-report', {
+      const res = await fetchWithTimeout('/api/generate-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chantierId }),
-      })
+      }, 60000)
 
       clearInterval(stepInterval)
 
@@ -69,13 +74,17 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
       const data = await res.json()
       setRapport(data.rapport)
       setProgressStep(PROGRESS_STEPS.length - 1)
-    } catch {
+    } catch (err) {
       clearInterval(stepInterval)
-      setError('Erreur de connexion. Vérifiez votre réseau.')
+      const msg = err instanceof DOMException && err.name === 'AbortError'
+        ? 'La génération prend trop de temps. Réessayez.'
+        : 'Erreur de connexion. Vérifiez votre réseau.'
+      setError(msg)
+      toast.show(msg, 'error')
     }
 
     setGenerating(false)
-  }, [chantierId, router])
+  }, [chantierId, router, toast])
 
   // Auto-generate on mount if no rapport exists
   useEffect(() => {
@@ -97,19 +106,30 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
       .from('rapports')
       .update({ contenu_json: updated })
       .eq('chantier_id', chantierId)
+    toast.show('Rapport sauvegardé', 'success')
   }
 
   const handlePreviewPdf = async () => {
-    const res = await fetch('/api/export-pdf', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chantierId }),
-    })
-    if (!res.ok) return
-    const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
-    setPdfUrl(url)
-    setShowPdfPreview(true)
+    setPdfLoading(true)
+    try {
+      const res = await fetchWithTimeout('/api/export-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chantierId }),
+      }, 45000)
+      if (!res.ok) {
+        toast.show('Erreur de génération PDF', 'error')
+        setPdfLoading(false)
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      setPdfUrl(url)
+      setShowPdfPreview(true)
+    } catch {
+      toast.show('Délai dépassé. Réessayez.', 'error')
+    }
+    setPdfLoading(false)
   }
 
   const handleDownloadPdf = () => {
@@ -176,7 +196,8 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
           </svg>
         </div>
         <p className="text-foreground font-medium mb-2">{error}</p>
-        <button onClick={generate} className="btn-primary mt-4">
+        <button onClick={generate} disabled={generating} className="btn-primary mt-4 flex items-center gap-2">
+          {generating && <Spinner className="h-4 w-4" />}
           Réessayer
         </button>
       </div>
@@ -195,11 +216,13 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
       {/* Action bar */}
       <div className="flex-shrink-0 bg-white border-t border-border px-4 py-3 pb-safe">
         <div className="flex gap-2">
-          <button onClick={handleRegenerate} className="btn-tertiary flex-1 text-sm py-2.5">
-            Régénérer
+          <button onClick={handleRegenerate} disabled={generating || pdfLoading} className="btn-tertiary flex-1 text-sm py-2.5 flex items-center justify-center gap-1.5">
+            {generating && <Spinner className="h-4 w-4" />}
+            {generating ? 'Régénération...' : 'Régénérer'}
           </button>
-          <button onClick={handlePreviewPdf} className="btn-secondary flex-1 text-sm py-2.5">
-            Prévisualiser PDF
+          <button onClick={handlePreviewPdf} disabled={pdfLoading || generating} className="btn-secondary flex-1 text-sm py-2.5 flex items-center justify-center gap-1.5">
+            {pdfLoading && <Spinner className="h-4 w-4" />}
+            {pdfLoading ? 'Chargement...' : 'Prévisualiser PDF'}
           </button>
         </div>
       </div>

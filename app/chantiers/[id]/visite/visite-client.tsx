@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { compressImage, uploadWithRetry } from '@/lib/utils'
+import { compressImage, uploadWithRetry, fetchWithTimeout } from '@/lib/utils'
+import { useToast } from '@/components/ToastProvider'
 import PhotoCapture from '@/components/PhotoCapture'
 import AudioRecorder from '@/components/AudioRecorder'
 import CaptureItemComponent from '@/components/CaptureItem'
@@ -25,6 +26,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
   const [countdown, setCountdown] = useState(0)
   const [showEndModal, setShowEndModal] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const toast = useToast()
 
   const timelineRef = useRef<HTMLDivElement>(null)
   const userScrolledRef = useRef(false)
@@ -86,6 +88,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
       if (inserted) {
         setCaptures((prev) => [...prev, inserted as CaptureItem])
         lastPhotoRef.current = { id: inserted.id, position, timestamp: Date.now() }
+        toast.show('Photo ajoutée', 'success')
 
         // Start 10s countdown for describe mode
         setDescribeMode(true)
@@ -104,10 +107,10 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
         }, 1000)
       }
     } catch (err) {
-      // Photo upload failed — handled silently
+      toast.show('Erreur lors de l\'upload photo', 'error')
     }
     setUploading(false)
-  }, [userId, chantier.id, nextPosition, supabase])
+  }, [userId, chantier.id, nextPosition, supabase, toast])
 
   // ---- AUDIO FLOW ----
   const handleRecordingComplete = useCallback(async (blob: Blob) => {
@@ -164,25 +167,30 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
         // Transcribe
         const formData = new FormData()
         formData.append('audio', blob, 'recording.webm')
-        const res = await fetch('/api/transcribe', { method: 'POST', body: formData })
-        const { text } = await res.json()
+        try {
+          const res = await fetchWithTimeout('/api/transcribe', { method: 'POST', body: formData }, 20000)
+          const { text } = await res.json()
 
-        if (text) {
-          await supabase
-            .from('capture_items')
-            .update({ transcription: text })
-            .eq('id', inserted.id)
+          if (text) {
+            await supabase
+              .from('capture_items')
+              .update({ transcription: text })
+              .eq('id', inserted.id)
 
-          setCaptures((prev) =>
-            prev.map((c) => (c.id === inserted.id ? { ...c, transcription: text } : c))
-          )
+            setCaptures((prev) =>
+              prev.map((c) => (c.id === inserted.id ? { ...c, transcription: text } : c))
+            )
+            toast.show('Transcription terminée', 'success')
+          }
+        } catch {
+          toast.show('Transcription échouée', 'error')
         }
       }
     } catch (err) {
-      // Audio upload failed — handled silently
+      toast.show('Erreur lors de l\'upload audio', 'error')
     }
     setUploading(false)
-  }, [userId, chantier.id, nextPosition, supabase, describeMode])
+  }, [userId, chantier.id, nextPosition, supabase, describeMode, toast])
 
   // ---- DELETE ----
   const handleDelete = useCallback(async (itemId: string, linkedId?: string | null) => {
@@ -233,7 +241,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* HEADER FIXE */}
-      <header className="flex-shrink-0 bg-white border-b border-border px-4 py-3">
+      <header className="flex-shrink-0 bg-white border-b border-border px-4 py-3 pt-safe">
         <div className="max-w-lg mx-auto flex items-center justify-between">
           <div className="flex-1 min-w-0">
             <h1 className="font-semibold text-foreground truncate">{chantier.client_nom}</h1>
@@ -244,7 +252,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
           </div>
           <button
             onClick={() => setShowEndModal(true)}
-            disabled={captures.length === 0}
+            disabled={captures.length === 0 || uploading}
             className="btn-secondary text-sm px-4 py-2 disabled:opacity-40"
           >
             Terminer
@@ -325,7 +333,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
       {showEndModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowEndModal(false)} />
-          <div className="relative w-full sm:max-w-sm bg-white rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up sm:animate-scale-in">
+          <div className="relative w-full sm:max-w-sm bg-white rounded-t-2xl sm:rounded-2xl p-6 pb-safe animate-slide-up sm:animate-scale-in">
             <h3 className="text-lg font-bold text-foreground mb-2">Terminer la visite ?</h3>
             <p className="text-gray-500 text-sm mb-6">
               {photoCount} photo{photoCount !== 1 ? 's' : ''} et {vocalCount} observation{vocalCount !== 1 ? 's' : ''} capturée{vocalCount !== 1 ? 's' : ''}.
