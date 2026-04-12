@@ -250,7 +250,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
   return (
     <div className="h-screen-safe flex flex-col bg-background">
       {/* HEADER FIXE */}
-      <header className="flex-shrink-0 bg-white border-b border-border px-4 py-3 pt-safe">
+      <header className="flex-shrink-0 bg-white border-b border-border px-5 py-4 pt-safe">
         <div className="max-w-lg mx-auto flex items-center justify-between">
           <div className="flex-1 min-w-0">
             <h1 className="font-semibold text-foreground truncate">{chantier.client_nom}</h1>
@@ -299,7 +299,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
       </div>
 
       {/* BARRE D'ACTIONS FIXE */}
-      <div className="flex-shrink-0 bg-white border-t border-border px-4 py-3 pb-safe">
+      <div className="flex-shrink-0 bg-white border-t border-border px-5 py-4 pb-safe">
         <div className="max-w-lg mx-auto">
         {/* Countdown indicator */}
         {describeMode && countdown > 0 && (
