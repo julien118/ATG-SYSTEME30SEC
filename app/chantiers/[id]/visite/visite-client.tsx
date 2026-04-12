@@ -273,7 +273,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
       <div
         ref={timelineRef}
         onScroll={handleTimelineScroll}
-        className="flex-1 overflow-y-auto px-4 py-4"
+        className="flex-1 overflow-y-auto px-5 py-4"
       >
         <div className="max-w-lg mx-auto space-y-3">
           {timelineItems.length === 0 && (

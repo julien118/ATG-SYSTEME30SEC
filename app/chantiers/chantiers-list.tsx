@@ -134,7 +134,7 @@ export default function ChantiersList({ chantiers, profile }: ChantiersListProps
       {/* FAB */}
       <Link
         href="/chantiers/nouveau"
-        className="fixed bottom-6 right-6 mb-safe w-14 h-14 btn-primary rounded-full flex items-center justify-center shadow-lg z-40 p-0"
+        className="fixed bottom-8 right-5 mb-safe w-14 h-14 btn-primary rounded-full flex items-center justify-center shadow-lg z-40 p-0"
       >
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
           <line x1="12" y1="5" x2="12" y2="19" />

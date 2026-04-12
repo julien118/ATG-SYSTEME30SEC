@@ -97,7 +97,7 @@ export default function InscriptionPage() {
   return (
     <main className="min-h-screen-safe bg-background flex flex-col">
       {/* Header */}
-      <header className="px-6 py-4 flex items-center justify-between">
+      <header className="px-6 py-4 pt-safe flex items-center justify-between">
         <Link href="/">
           <Image
             src="/logo-ionnyx.png"

@@ -209,12 +209,12 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
 
   return (
     <>
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-5 py-4">
         <ReportView contenu={rapport} onUpdate={handleUpdate} />
       </div>
 
       {/* Action bar */}
-      <div className="flex-shrink-0 bg-white border-t border-border px-4 py-3 pb-safe">
+      <div className="flex-shrink-0 bg-white border-t border-border px-5 py-4 pb-safe">
         <div className="flex gap-2">
           <button onClick={handleRegenerate} disabled={generating || pdfLoading} className="btn-tertiary flex-1 text-sm py-2.5 flex items-center justify-center gap-1.5">
             {generating && <Spinner className="h-4 w-4" />}

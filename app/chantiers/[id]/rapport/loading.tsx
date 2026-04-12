@@ -1,7 +1,7 @@
 export default function RapportLoading() {
   return (
     <div className="min-h-screen-safe bg-background flex flex-col">
-      <header className="flex-shrink-0 sticky top-0 z-30 bg-white border-b border-border px-4 py-3 pt-safe flex items-center gap-3">
+      <header className="flex-shrink-0 sticky top-0 z-30 bg-white border-b border-border px-5 py-4 pt-safe flex items-center gap-3">
         <div className="skeleton h-6 w-6 rounded" />
         <div>
           <div className="skeleton h-6 w-24 mb-1" />
@@ -28,7 +28,7 @@ export default function RapportLoading() {
           </div>
         ))}
       </div>
-      <div className="flex-shrink-0 bg-white border-t border-border px-4 py-3 pb-safe">
+      <div className="flex-shrink-0 bg-white border-t border-border px-5 py-4 pb-safe">
         <div className="flex gap-2">
           <div className="skeleton flex-1 h-11 rounded-xl" />
           <div className="skeleton flex-1 h-11 rounded-xl" />

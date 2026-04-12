@@ -38,7 +38,7 @@ export default async function ChantiersPage() {
   return (
     <div className="min-h-screen-safe bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-white border-b border-border px-4 py-3 pt-safe flex items-center justify-between">
+      <header className="sticky top-0 z-30 bg-white border-b border-border px-5 py-4 pt-safe flex items-center justify-between">
         <Image
           src="/logo-ionnyx.png"
           alt="IONNYX"
@@ -52,7 +52,7 @@ export default async function ChantiersPage() {
       </header>
 
       {/* Content */}
-      <main className="px-4 py-4 max-w-2xl mx-auto page-enter">
+      <main className="px-5 py-4 max-w-2xl mx-auto page-enter">
         <ChantiersList
           chantiers={(chantiers as Chantier[]) ?? []}
           profile={safeProfile}
