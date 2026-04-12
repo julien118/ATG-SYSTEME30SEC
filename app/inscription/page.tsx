@@ -71,7 +71,7 @@ export default function InscriptionPage() {
 
   if (state === 'sent') {
     return (
-      <main className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
+      <main className="min-h-screen-safe bg-background flex flex-col items-center justify-center px-6">
         <div className="w-full max-w-md text-center animate-scale-in">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center mx-auto mb-6">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -95,7 +95,7 @@ export default function InscriptionPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background flex flex-col">
+    <main className="min-h-screen-safe bg-background flex flex-col">
       {/* Header */}
       <header className="px-6 py-4 flex items-center justify-between">
         <Link href="/">

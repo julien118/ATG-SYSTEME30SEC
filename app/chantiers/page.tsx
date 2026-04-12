@@ -36,7 +36,7 @@ export default async function ChantiersPage() {
     .order('created_at', { ascending: false })
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen-safe bg-background">
       {/* Header */}
       <header className="sticky top-0 z-30 bg-white border-b border-border px-4 py-3 pt-safe flex items-center justify-between">
         <Image

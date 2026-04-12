@@ -11,6 +11,12 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    /* Fix 100vh on mobile Safari */
+    height: -webkit-fill-available;
+  }
+
+  body {
+    min-height: -webkit-fill-available;
   }
 
   body {
@@ -134,6 +140,17 @@
 
   .page-enter {
     animation: page-enter 0.25s ease-out;
+  }
+
+  /* Mobile-safe full height (accounts for Safari address bar) */
+  .h-screen-safe {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .min-h-screen-safe {
+    min-height: 100vh;
+    min-height: 100dvh;
   }
 }
 

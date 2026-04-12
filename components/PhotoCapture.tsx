@@ -32,7 +32,7 @@ export default function PhotoCapture({ onPhotoTaken, disabled }: PhotoCapturePro
       <button
         onClick={() => inputRef.current?.click()}
         disabled={disabled}
-        className="flex-1 flex items-center justify-center gap-2 py-4 bg-white rounded-xl border border-border font-medium text-foreground transition-all hover:border-primary/30 active:scale-[0.97] disabled:opacity-50"
+        className="flex-1 flex items-center justify-center gap-2 py-3 bg-white rounded-xl border border-border font-medium text-foreground transition-all hover:border-primary/30 active:scale-[0.97] disabled:opacity-50"
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />

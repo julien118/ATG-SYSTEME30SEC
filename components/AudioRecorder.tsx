@@ -67,7 +67,7 @@ export default function AudioRecorder({ onRecordingComplete, disabled, describeM
     return (
       <button
         onClick={stopRecording}
-        className="flex-1 flex items-center justify-center gap-2 py-4 bg-red-600 rounded-xl font-medium text-white transition-all active:scale-[0.97] animate-pulse-record"
+        className="flex-1 flex items-center justify-center gap-2 py-3 bg-red-600 rounded-xl font-medium text-white transition-all active:scale-[0.97] animate-pulse-record"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <rect x="6" y="6" width="12" height="12" rx="2" />
@@ -81,7 +81,7 @@ export default function AudioRecorder({ onRecordingComplete, disabled, describeM
     <button
       onClick={startRecording}
       disabled={disabled}
-      className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-xl font-medium transition-all active:scale-[0.97] disabled:opacity-50 ${
+      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all active:scale-[0.97] disabled:opacity-50 ${
         describeMode
           ? 'bg-gradient-to-r from-primary to-primary-dark text-white shadow-md'
           : 'bg-white border border-border text-foreground hover:border-primary/30'

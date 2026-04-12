@@ -1,6 +1,6 @@
 export default function ChantiersLoading() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen-safe bg-background">
       <header className="sticky top-0 z-30 bg-white border-b border-border px-4 py-3 pt-safe flex items-center justify-between">
         <div className="skeleton h-7 w-28" />
         <div className="skeleton h-9 w-9 rounded-full" />

@@ -1,6 +1,6 @@
 export default function RapportLoading() {
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen-safe bg-background flex flex-col">
       <header className="flex-shrink-0 sticky top-0 z-30 bg-white border-b border-border px-4 py-3 pt-safe flex items-center gap-3">
         <div className="skeleton h-6 w-6 rounded" />
         <div>

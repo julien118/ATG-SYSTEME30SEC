@@ -26,7 +26,7 @@ export default async function RapportPage({ params }: { params: { id: string } }
     .single()
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen-safe bg-background flex flex-col">
       <header className="flex-shrink-0 sticky top-0 z-30 bg-white border-b border-border px-4 py-3 pt-safe flex items-center gap-3">
         <Link href="/chantiers" className="p-1 -ml-1 text-gray-400 hover:text-foreground transition-colors">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
