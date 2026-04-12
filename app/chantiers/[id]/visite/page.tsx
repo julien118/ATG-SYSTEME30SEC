@@ -29,11 +29,22 @@ export default async function VisitePage({ params }: { params: { id: string } })
     .eq('id', user.id)
     .single()
 
+  const safeProfile: Profile = profile ? (profile as Profile) : {
+    id: user.id,
+    prenom: user.user_metadata?.prenom ?? '',
+    nom: user.user_metadata?.nom ?? '',
+    telephone: null,
+    metier: null,
+    entreprise: null,
+    rapports_generes: 0,
+    created_at: new Date().toISOString(),
+  }
+
   return (
     <VisiteClient
       chantier={chantier as Chantier}
       initialCaptures={(captures as CaptureItem[]) ?? []}
-      profile={profile as Profile}
+      profile={safeProfile}
       userId={user.id}
     />
   )
