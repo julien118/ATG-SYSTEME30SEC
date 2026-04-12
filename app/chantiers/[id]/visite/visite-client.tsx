@@ -104,7 +104,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
         }, 1000)
       }
     } catch (err) {
-      console.error('Photo upload failed:', err)
+      // Photo upload failed — handled silently
     }
     setUploading(false)
   }, [userId, chantier.id, nextPosition, supabase])
@@ -179,7 +179,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
         }
       }
     } catch (err) {
-      console.error('Audio upload failed:', err)
+      // Audio upload failed — handled silently
     }
     setUploading(false)
   }, [userId, chantier.id, nextPosition, supabase, describeMode])

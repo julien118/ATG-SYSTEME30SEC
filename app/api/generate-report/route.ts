@@ -6,6 +6,7 @@ import { SYSTEM_PROMPT, buildUserPrompt } from '@/lib/prompts'
 import type { Chantier, CaptureItem, RapportContenu } from '@/lib/types'
 
 export async function POST(request: Request) {
+  try {
   const cookieStore = cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -141,4 +142,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ rapport })
+  } catch {
+    return NextResponse.json({ error: 'Report generation failed' }, { status: 500 })
+  }
 }

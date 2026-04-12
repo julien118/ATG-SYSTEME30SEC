@@ -63,6 +63,7 @@ async function fetchImageAsBase64(url: string): Promise<ImageData | null> {
 }
 
 export async function POST(request: Request) {
+  try {
   const cookieStore = cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -289,4 +290,7 @@ export async function POST(request: Request) {
       'Content-Disposition': `inline; filename="${filename}"`,
     },
   })
+  } catch {
+    return NextResponse.json({ error: 'PDF generation failed' }, { status: 500 })
+  }
 }

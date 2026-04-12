@@ -58,7 +58,7 @@ export default function InscriptionPage() {
 
     if (error) {
       setState('error')
-      console.error('Supabase auth error:', error.message, error.status, error)
+      // Auth error handled via UI
       if (error.message.includes('rate limit')) {
         setErrorMsg('Trop de tentatives. Veuillez réessayer dans quelques minutes.')
       } else {

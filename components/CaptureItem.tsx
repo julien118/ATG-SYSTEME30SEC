@@ -38,9 +38,11 @@ export default function CaptureItem({ item, linkedVocal, onDelete, onEditTranscr
       {/* Photo */}
       {isPhoto && item.photo_url && (
         <div className="relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={item.photo_url}
             alt={`Capture #${item.position}`}
+            loading="lazy"
             className="w-full max-h-64 object-contain bg-gray-50"
           />
           <span className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded-lg">

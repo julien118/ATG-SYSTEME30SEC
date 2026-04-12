@@ -6,6 +6,7 @@ export async function DELETE(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
+  try {
   const cookieStore = cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -86,4 +87,7 @@ export async function DELETE(
   }
 
   return NextResponse.json({ success: true })
+  } catch {
+    return NextResponse.json({ error: 'Delete failed' }, { status: 500 })
+  }
 }
