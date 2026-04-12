@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========================================
+   IONNYX Demo — Design System
+   ======================================== */
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    /* Safe area insets for notched devices */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Anti-zoom iOS — inputs must be 16px minimum */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+@layer components {
+  /* ---- Buttons ---- */
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-xl px-6 py-3
+           text-white font-semibold text-base
+           transition-all duration-200 ease-out;
+    background: linear-gradient(135deg, #10B981, #059669);
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45);
+  }
+  .btn-primary:active {
+    transform: scale(0.97);
+  }
+  .btn-primary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-xl px-6 py-3
+           bg-header text-white font-semibold text-base
+           transition-all duration-200 ease-out;
+  }
+  .btn-secondary:hover {
+    @apply bg-gray-800;
+  }
+  .btn-secondary:active {
+    transform: scale(0.97);
+  }
+  .btn-secondary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .btn-tertiary {
+    @apply inline-flex items-center justify-center rounded-xl px-6 py-3
+           bg-white text-foreground font-medium text-base
+           border border-border
+           transition-all duration-200 ease-out;
+  }
+  .btn-tertiary:hover {
+    @apply border-primary text-primary;
+  }
+  .btn-tertiary:active {
+    transform: scale(0.97);
+  }
+  .btn-tertiary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* ---- Inputs ---- */
+
+  .input-ionnyx {
+    @apply w-full rounded-xl px-4 py-3
+           bg-input-bg border border-border
+           text-foreground placeholder-gray-400
+           transition-all duration-200 ease-out;
+    font-size: 16px; /* Anti-zoom iOS */
+  }
+  .input-ionnyx:focus {
+    @apply bg-input-focus border-primary outline-none;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+  }
+
+  /* ---- Status Badges ---- */
+
+  .badge-en-cours {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full
+           bg-amber-50 text-amber-700 text-xs font-medium;
+  }
+
+  .badge-termine {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full
+           bg-gray-100 text-gray-600 text-xs font-medium;
+  }
+
+  .badge-rapport {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full
+           bg-emerald-50 text-emerald-700 text-xs font-medium;
+  }
+}
+
+@layer utilities {
+  /* Safe area bottom padding for fixed bottom bars */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom);
+  }
+}
