@@ -22,6 +22,7 @@ export default function ChantiersList({ chantiers, profile }: ChantiersListProps
   const [deleteTarget, setDeleteTarget] = useState<Chantier | null>(null)
   const router = useRouter()
   const toast = useToast()
+  const isTrialOver = profile.rapports_generes >= 2
 
   // Filter by tab
   const tabFiltered = chantiers.filter((c) => {
@@ -131,16 +132,32 @@ export default function ChantiersList({ chantiers, profile }: ChantiersListProps
         </div>
       )}
 
-      {/* FAB */}
-      <Link
-        href="/chantiers/nouveau"
-        className="fixed bottom-8 right-5 mb-safe w-14 h-14 btn-primary rounded-full flex items-center justify-center shadow-lg z-40 p-0"
-      >
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-          <line x1="12" y1="5" x2="12" y2="19" />
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-      </Link>
+      {/* FAB — hidden when trial is over */}
+      {!isTrialOver && (
+        <Link
+          href="/chantiers/nouveau"
+          className="fixed bottom-8 right-5 mb-safe w-14 h-14 btn-primary rounded-full flex items-center justify-center shadow-lg z-40 p-0"
+        >
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </Link>
+      )}
+
+      {/* Sticky CTA when trial is over */}
+      {isTrialOver && (
+        <div className="fixed bottom-0 inset-x-0 z-40 px-5 py-4 pb-safe bg-white border-t border-border">
+          <a
+            href={process.env.NEXT_PUBLIC_CONTACT_URL || '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary w-full text-base py-3.5 block text-center"
+          >
+            Passer à la version complète →
+          </a>
+        </div>
+      )}
 
       {/* Delete modal */}
       {deleteTarget && (
