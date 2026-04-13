@@ -29,7 +29,6 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
   const [generating, setGenerating] = useState(false)
   const [progressStep, setProgressStep] = useState(0)
   const [error, setError] = useState('')
-  const [pdfLoading, setPdfLoading] = useState(false)
   const toast = useToast()
   const generationStarted = useRef(false)
 
@@ -106,23 +105,9 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
     toast.show('Rapport sauvegardé', 'success')
   }
 
-  const handleViewPdf = async () => {
-    setPdfLoading(true)
-    try {
-      const res = await fetchWithTimeout('/api/export-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chantierId }),
-      }, 45000)
-      if (!res.ok) { toast.show('Erreur génération PDF', 'error'); setPdfLoading(false); return }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      // Navigate in same tab — Safari handles PDF natively with scroll, zoom, and download button
-      window.location.href = url
-    } catch {
-      toast.show('Délai dépassé. Réessayez.', 'error')
-      setPdfLoading(false)
-    }
+  const handleViewPdf = () => {
+    // Navigate to GET endpoint — Safari opens PDF natively with scroll, zoom, share
+    window.location.href = `/api/export-pdf?chantierId=${chantierId}`
   }
 
   // ---- GENERATING VIEW ----
@@ -201,18 +186,16 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
       {/* Action bar */}
       <div className="flex-shrink-0 bg-white border-t border-border px-5 py-4 pb-safe">
         <div className="flex gap-3">
-          <button onClick={handleRegenerate} disabled={generating || pdfLoading} className="btn-tertiary flex-1 text-sm py-3 flex items-center justify-center gap-1.5">
+          <button onClick={handleRegenerate} disabled={generating} className="btn-tertiary flex-1 text-sm py-3 flex items-center justify-center gap-1.5">
             {generating && <Spinner className="h-4 w-4" />}
             {generating ? 'Régénération...' : 'Régénérer'}
           </button>
-          <button onClick={handleViewPdf} disabled={pdfLoading || generating} className="btn-primary flex-1 text-sm py-3 flex items-center justify-center gap-2">
-            {pdfLoading ? <Spinner className="h-4 w-4" /> : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-              </svg>
-            )}
-            {pdfLoading ? 'Chargement...' : 'Voir mon rapport'}
+          <button onClick={handleViewPdf} disabled={generating} className="btn-primary flex-1 text-sm py-3 flex items-center justify-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+            Voir mon rapport
           </button>
         </div>
       </div>
