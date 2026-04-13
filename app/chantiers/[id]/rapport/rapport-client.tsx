@@ -132,12 +132,27 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
     setPdfLoading(false)
   }
 
-  const handleDownloadPdf = () => {
-    if (!pdfUrl) return
-    const a = document.createElement('a')
-    a.href = pdfUrl
-    a.download = `rapport-visite-${chantierId.slice(0, 8)}.pdf`
-    a.click()
+  const handleDownloadPdf = async () => {
+    // Fetch fresh PDF with attachment header for reliable download on all browsers
+    try {
+      const res = await fetchWithTimeout('/api/export-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chantierId }),
+      }, 45000)
+      if (!res.ok) { toast.show('Erreur téléchargement', 'error'); return }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `rapport-visite-${chantierId.slice(0, 8)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.show('Erreur téléchargement PDF', 'error')
+    }
   }
 
   // ---- GENERATING VIEW ----
