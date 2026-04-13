@@ -24,7 +24,7 @@ function addFooter(doc: jsPDF) {
 }
 
 function checkPageBreak(doc: jsPDF, y: number, needed: number): number {
-  if (y + needed > PAGE_HEIGHT - 25) {
+  if (y + needed > PAGE_HEIGHT - 30) {
     doc.addPage()
     return 20
   }
@@ -178,7 +178,7 @@ export async function POST(request: Request) {
         const imgX = MARGIN + (CONTENT_WIDTH - imgW) / 2
         try {
           doc.addImage(imgData.base64, 'JPEG', imgX, y, imgW, imgH)
-          y += imgH + 2
+          y += imgH + 5
         } catch {
           y += 2
         }

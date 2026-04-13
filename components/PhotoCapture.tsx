@@ -25,7 +25,6 @@ export default function PhotoCapture({ onPhotoTaken, disabled }: PhotoCapturePro
         ref={inputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         onChange={handleChange}
         className="hidden"
       />

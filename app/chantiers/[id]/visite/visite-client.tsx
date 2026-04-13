@@ -256,7 +256,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
             <h1 className="font-semibold text-foreground truncate">{chantier.client_nom}</h1>
             <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
               <span>{photoCount} photo{photoCount !== 1 ? 's' : ''}</span>
-              <span>{vocalCount} vocal{vocalCount !== 1 ? 's' : ''}</span>
+              <span>{vocalCount} {vocalCount > 1 ? 'vocaux' : 'vocal'}</span>
             </div>
           </div>
           <button
