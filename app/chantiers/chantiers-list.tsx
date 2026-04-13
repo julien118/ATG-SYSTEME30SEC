@@ -154,7 +154,7 @@ export default function ChantiersList({ chantiers, profile }: ChantiersListProps
             rel="noopener noreferrer"
             className="btn-primary w-full text-base py-3.5 block text-center"
           >
-            Passer à la version complète →
+            Échanger avec Julien →
           </a>
         </div>
       )}

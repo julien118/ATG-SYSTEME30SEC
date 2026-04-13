@@ -14,7 +14,7 @@ export default function TrialBanner({ rapportsGeneres }: { rapportsGeneres: numb
           Vous avez gagné du temps, non ?
         </h2>
         <p className="text-sm text-gray-500 mb-5">
-          Imaginez ça sur chaque chantier. Votre version personnalisée est prête.
+          Imaginez ça lors de chacune de vos visites, personnalisée pour vous !
         </p>
         <a
           href={CONTACT_URL}
@@ -22,7 +22,7 @@ export default function TrialBanner({ rapportsGeneres }: { rapportsGeneres: numb
           rel="noopener noreferrer"
           className="btn-primary w-full text-base py-3.5 block text-center"
         >
-          Échanger avec Julien — 15 min
+          Échanger avec Julien — 20 min
         </a>
         <p className="text-xs text-gray-400 text-center mt-3">
           Gratuit, sans engagement. On regarde ensemble comment l&apos;adapter à votre activité.
