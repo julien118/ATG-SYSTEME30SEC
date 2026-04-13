@@ -29,6 +29,7 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
   const [generating, setGenerating] = useState(false)
   const [progressStep, setProgressStep] = useState(0)
   const [error, setError] = useState('')
+  const [viewingPdf, setViewingPdf] = useState(false)
   const toast = useToast()
   const generationStarted = useRef(false)
 
@@ -106,7 +107,7 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
   }
 
   const handleViewPdf = () => {
-    // Navigate to GET endpoint — Safari opens PDF natively with scroll, zoom, share
+    setViewingPdf(true)
     window.location.href = `/api/export-pdf?chantierId=${chantierId}`
   }
 
@@ -184,20 +185,36 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
       </div>
 
       {/* Action bar */}
-      <div className="flex-shrink-0 bg-white border-t border-border px-5 py-4 pb-safe">
+      <div className="flex-shrink-0 bg-white border-t border-border px-5 py-4 pb-safe space-y-2">
         <div className="flex gap-3">
-          <button onClick={handleRegenerate} disabled={generating} className="btn-tertiary flex-1 text-sm py-3 flex items-center justify-center gap-1.5">
+          <button onClick={handleRegenerate} disabled={generating || viewingPdf} className="btn-tertiary flex-1 text-sm py-3 flex items-center justify-center gap-1.5">
             {generating && <Spinner className="h-4 w-4" />}
             {generating ? 'Régénération...' : 'Régénérer'}
           </button>
-          <button onClick={handleViewPdf} disabled={generating} className="btn-primary flex-1 text-sm py-3 flex items-center justify-center gap-2">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
-            Voir mon rapport
+          <button onClick={handleViewPdf} disabled={generating || viewingPdf} className="btn-primary flex-1 text-sm py-3 flex items-center justify-center gap-2">
+            {viewingPdf ? (
+              <Spinner className="h-4 w-4" />
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+            )}
+            {viewingPdf ? 'Chargement...' : 'Voir mon rapport'}
           </button>
         </div>
+        <a
+          href={`/api/export-pdf?chantierId=${chantierId}`}
+          download={`rapport-visite-${chantierId.slice(0, 8)}.pdf`}
+          className="btn-tertiary w-full text-sm py-2.5 flex items-center justify-center gap-2"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Télécharger le rapport
+        </a>
       </div>
     </>
   )
