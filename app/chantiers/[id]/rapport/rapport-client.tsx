@@ -29,8 +29,6 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
   const [generating, setGenerating] = useState(false)
   const [progressStep, setProgressStep] = useState(0)
   const [error, setError] = useState('')
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
-  const [showPdfPreview, setShowPdfPreview] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
   const toast = useToast()
   const generationStarted = useRef(false)
@@ -96,7 +94,6 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
 
   const handleRegenerate = () => {
     setRapport(null)
-    setPdfUrl(null)
     generate()
   }
 
@@ -109,39 +106,35 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
     toast.show('Rapport sauvegardé', 'success')
   }
 
-  const handlePreviewPdf = async () => {
-    setPdfLoading(true)
+  const fetchPdfBlob = async (): Promise<Blob | null> => {
     try {
       const res = await fetchWithTimeout('/api/export-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chantierId }),
       }, 45000)
-      if (!res.ok) {
-        toast.show('Erreur de génération PDF', 'error')
-        setPdfLoading(false)
-        return
-      }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      setPdfUrl(url)
-      setShowPdfPreview(true)
+      if (!res.ok) { toast.show('Erreur génération PDF', 'error'); return null }
+      return await res.blob()
     } catch {
       toast.show('Délai dépassé. Réessayez.', 'error')
+      return null
+    }
+  }
+
+  const handlePreviewPdf = async () => {
+    setPdfLoading(true)
+    const blob = await fetchPdfBlob()
+    if (blob) {
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank')
     }
     setPdfLoading(false)
   }
 
   const handleDownloadPdf = async () => {
-    // Fetch fresh PDF with attachment header for reliable download on all browsers
-    try {
-      const res = await fetchWithTimeout('/api/export-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chantierId }),
-      }, 45000)
-      if (!res.ok) { toast.show('Erreur téléchargement', 'error'); return }
-      const blob = await res.blob()
+    setPdfLoading(true)
+    const blob = await fetchPdfBlob()
+    if (blob) {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -150,9 +143,8 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-    } catch {
-      toast.show('Erreur téléchargement PDF', 'error')
     }
+    setPdfLoading(false)
   }
 
   // ---- GENERATING VIEW ----
@@ -229,46 +221,23 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
       </div>
 
       {/* Action bar */}
+      {/* Action bar — 3 buttons */}
       <div className="flex-shrink-0 bg-white border-t border-border px-5 py-4 pb-safe">
         <div className="flex gap-2">
           <button onClick={handleRegenerate} disabled={generating || pdfLoading} className="btn-tertiary flex-1 text-sm py-2.5 flex items-center justify-center gap-1.5">
             {generating && <Spinner className="h-4 w-4" />}
             {generating ? 'Régénération...' : 'Régénérer'}
           </button>
-          <button onClick={handlePreviewPdf} disabled={pdfLoading || generating} className="btn-secondary flex-1 text-sm py-2.5 flex items-center justify-center gap-1.5">
+          <button onClick={handlePreviewPdf} disabled={pdfLoading || generating} className="btn-tertiary flex-1 text-sm py-2.5 flex items-center justify-center gap-1.5">
             {pdfLoading && <Spinner className="h-4 w-4" />}
-            {pdfLoading ? 'Chargement...' : 'Prévisualiser PDF'}
+            {pdfLoading ? 'Chargement...' : 'Voir PDF'}
+          </button>
+          <button onClick={handleDownloadPdf} disabled={pdfLoading || generating} className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-1.5">
+            {pdfLoading && <Spinner className="h-4 w-4" />}
+            Télécharger
           </button>
         </div>
       </div>
-
-      {/* PDF Preview lightbox */}
-      {showPdfPreview && pdfUrl && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 bg-black/40">
-            <button
-              onClick={() => setShowPdfPreview(false)}
-              className="text-white/80 hover:text-white transition-colors"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-            <button
-              onClick={handleDownloadPdf}
-              className="btn-primary text-sm px-4 py-2"
-            >
-              Télécharger PDF
-            </button>
-          </div>
-          <iframe
-            src={pdfUrl}
-            className="flex-1 w-full bg-white"
-            title="Aperçu PDF"
-          />
-        </div>
-      )}
     </>
   )
 }
