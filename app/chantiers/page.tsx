@@ -39,12 +39,14 @@ export default async function ChantiersPage() {
     <div className="min-h-screen-safe bg-background">
       {/* Header */}
       <header className="sticky top-0 z-30 bg-white border-b border-border px-5 py-4 pt-safe flex items-center justify-between">
-        <Image
-          src="/logo-ionnyx.png"
-          alt="IONNYX"
-          width={110}
-          height={26}
-        />
+        <a href="https://ionnyx.fr/">
+          <Image
+            src="/logo-ionnyx.png"
+            alt="IONNYX"
+            width={110}
+            height={26}
+          />
+        </a>
         <UserMenu
           prenom={safeProfile.prenom}
           nom={safeProfile.nom}

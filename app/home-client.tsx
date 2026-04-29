@@ -37,13 +37,15 @@ export default function HomeClient() {
     <main className="min-h-screen-safe bg-background flex flex-col">
       {/* Header */}
       <header className="px-6 py-4 pt-safe">
-        <Image
-          src="/logo-ionnyx.png"
-          alt="IONNYX"
-          width={140}
-          height={32}
-          priority
-        />
+        <a href="https://ionnyx.fr/">
+          <Image
+            src="/logo-ionnyx.png"
+            alt="IONNYX"
+            width={140}
+            height={32}
+            priority
+          />
+        </a>
       </header>
 
       {/* Hero */}

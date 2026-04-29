@@ -37,7 +37,7 @@ export default async function ChantierDetailPage({ params }: { params: { id: str
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </Link>
-        <Image src="/logo-ionnyx.png" alt="IONNYX" width={120} height={28} />
+        <a href="https://ionnyx.fr/"><Image src="/logo-ionnyx.png" alt="IONNYX" width={120} height={28} /></a>
       </header>
 
       <main className="px-5 py-6 max-w-lg mx-auto">
