@@ -34,7 +34,7 @@ export default async function RapportPage({ params }: { params: { id: string } }
           </svg>
         </Link>
         <div className="flex-1 min-w-0">
-          <Image src="/logo-ionnyx.png" alt="IONNYX" width={120} height={28} />
+          <a href="https://ionnyx.fr/"><Image src="/logo-ionnyx.png" alt="IONNYX" width={120} height={28} /></a>
           <p className="text-xs text-gray-400 truncate">{chantier.client_nom}</p>
         </div>
       </header>

@@ -3,9 +3,8 @@ import Groq from 'groq-sdk'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
-
 export async function POST(request: Request) {
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
   try {
     const cookieStore = cookies()
     const supabase = createServerClient(

@@ -98,7 +98,7 @@ export default function InscriptionPage() {
     <main className="min-h-screen-safe bg-background flex flex-col">
       {/* Header */}
       <header className="px-6 py-4 pt-safe flex items-center justify-between">
-        <Link href="/">
+        <a href="https://ionnyx.fr/">
           <Image
             src="/logo-ionnyx.png"
             alt="IONNYX"
@@ -106,7 +106,7 @@ export default function InscriptionPage() {
             height={28}
             priority
           />
-        </Link>
+        </a>
       </header>
 
       {/* Form */}
