@@ -8,11 +8,8 @@ interface LogoLinkProps {
 
 export default function LogoLink({ width = 120, height = 28, priority = false }: LogoLinkProps) {
   return (
-    <a href="https://ionnyx.fr/" className="inline-flex flex-col items-start gap-0.5 group">
+    <a href="https://ionnyx.fr/">
       <Image src="/logo-ionnyx.png" alt="IONNYX" width={width} height={height} priority={priority} />
-      <span className="text-[10px] text-primary font-medium leading-none group-hover:underline">
-        Visiter ionnyx.fr →
-      </span>
     </a>
   )
 }

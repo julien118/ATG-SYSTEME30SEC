@@ -15,8 +15,11 @@ const AVANTAGES = [
 export default function EssaiTerminePage() {
   return (
     <main className="min-h-screen-safe bg-background flex flex-col">
-      <header className="px-6 py-4 pt-safe">
+      <header className="px-6 py-4 pt-safe flex items-center justify-between">
         <LogoLink width={120} height={28} />
+        <a href="https://ionnyx.fr/" className="text-sm font-medium border border-primary text-primary rounded-lg px-4 py-2 hover:bg-primary hover:text-white transition-colors whitespace-nowrap">
+          Voir le site complet →
+        </a>
       </header>
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 pb-12 text-center">
