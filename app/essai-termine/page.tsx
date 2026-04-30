@@ -1,5 +1,5 @@
-import Image from 'next/image'
 import Link from 'next/link'
+import LogoLink from '@/components/LogoLink'
 
 const CONTACT_URL = process.env.NEXT_PUBLIC_CONTACT_URL || '#'
 const WHATSAPP_URL = process.env.NEXT_PUBLIC_WHATSAPP_URL || ''
@@ -16,7 +16,7 @@ export default function EssaiTerminePage() {
   return (
     <main className="min-h-screen-safe bg-background flex flex-col">
       <header className="px-6 py-4 pt-safe">
-        <a href="https://ionnyx.fr/"><Image src="/logo-ionnyx.png" alt="IONNYX" width={120} height={28} /></a>
+        <LogoLink width={120} height={28} />
       </header>
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 pb-12 text-center">

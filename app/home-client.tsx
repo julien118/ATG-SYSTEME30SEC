@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import LogoLink from '@/components/LogoLink'
 
 export default function HomeClient() {
   const [showLogin, setShowLogin] = useState(false)
@@ -37,15 +37,7 @@ export default function HomeClient() {
     <main className="min-h-screen-safe bg-background flex flex-col">
       {/* Header */}
       <header className="px-6 py-4 pt-safe">
-        <a href="https://ionnyx.fr/">
-          <Image
-            src="/logo-ionnyx.png"
-            alt="IONNYX"
-            width={140}
-            height={32}
-            priority
-          />
-        </a>
+        <LogoLink width={140} height={32} priority />
       </header>
 
       {/* Hero */}

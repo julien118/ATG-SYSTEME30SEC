@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
-import Image from 'next/image'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import LogoLink from '@/components/LogoLink'
 import ChantierForm from '@/components/ChantierForm'
 
 export default async function NouveauChantierPage() {
@@ -17,7 +17,7 @@ export default async function NouveauChantierPage() {
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </Link>
-        <a href="https://ionnyx.fr/"><Image src="/logo-ionnyx.png" alt="IONNYX" width={120} height={28} /></a>
+        <LogoLink width={120} height={28} />
       </header>
 
       <main className="px-5 py-6 max-w-lg mx-auto page-enter">

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
-import Image from 'next/image'
 import { createClient } from '@/lib/supabase/server'
+import LogoLink from '@/components/LogoLink'
 import UserMenu from '@/components/UserMenu'
 import ChantiersList from './chantiers-list'
 import type { Profile, Chantier } from '@/lib/types'
@@ -39,14 +39,7 @@ export default async function ChantiersPage() {
     <div className="min-h-screen-safe bg-background">
       {/* Header */}
       <header className="sticky top-0 z-30 bg-white border-b border-border px-5 py-4 pt-safe flex items-center justify-between">
-        <a href="https://ionnyx.fr/">
-          <Image
-            src="/logo-ionnyx.png"
-            alt="IONNYX"
-            width={110}
-            height={26}
-          />
-        </a>
+        <LogoLink width={110} height={26} />
         <UserMenu
           prenom={safeProfile.prenom}
           nom={safeProfile.nom}

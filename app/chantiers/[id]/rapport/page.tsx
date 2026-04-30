@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
-import Image from 'next/image'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import LogoLink from '@/components/LogoLink'
 import RapportClient from './rapport-client'
 import type { RapportContenu } from '@/lib/types'
 
@@ -34,7 +34,7 @@ export default async function RapportPage({ params }: { params: { id: string } }
           </svg>
         </Link>
         <div className="flex-1 min-w-0">
-          <a href="https://ionnyx.fr/"><Image src="/logo-ionnyx.png" alt="IONNYX" width={120} height={28} /></a>
+          <LogoLink width={120} height={28} />
           <p className="text-xs text-gray-400 truncate">{chantier.client_nom}</p>
         </div>
       </header>

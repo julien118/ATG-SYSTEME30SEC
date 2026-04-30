@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import LogoLink from '@/components/LogoLink'
 
 const METIERS = [
   'Maçonnerie / Gros œuvre',
@@ -98,15 +98,7 @@ export default function InscriptionPage() {
     <main className="min-h-screen-safe bg-background flex flex-col">
       {/* Header */}
       <header className="px-6 py-4 pt-safe flex items-center justify-between">
-        <a href="https://ionnyx.fr/">
-          <Image
-            src="/logo-ionnyx.png"
-            alt="IONNYX"
-            width={120}
-            height={28}
-            priority
-          />
-        </a>
+        <LogoLink width={120} height={28} priority />
       </header>
 
       {/* Form */}
