@@ -62,7 +62,7 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body className={inter.className}>
-        <div className="w-full bg-primary text-white text-center text-sm font-medium" style={{padding: '10px 16px'}}>
+        <div className="w-full bg-primary text-white text-center text-sm font-medium sticky top-0 z-50" style={{padding: '10px 16px'}}>
           Ceci est une démonstration. Le système est développé sur mesure pour chaque entreprise, son métier, ses chantiers, ce n&apos;est pas un logiciel générique.
         </div>
         <ToastProvider>{children}</ToastProvider>
