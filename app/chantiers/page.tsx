@@ -40,9 +40,6 @@ export default async function ChantiersPage() {
       {/* Header */}
       <header className="sticky top-0 z-30 bg-white border-b border-border px-5 py-4 pt-safe flex items-center justify-between">
         <LogoLink width={110} height={26} />
-        <a href="https://ionnyx.fr/" className="text-sm font-medium border border-primary text-primary rounded-lg px-4 py-2 hover:bg-primary hover:text-white transition-colors whitespace-nowrap">
-          Voir le site complet →
-        </a>
         <UserMenu
           prenom={safeProfile.prenom}
           nom={safeProfile.nom}
@@ -56,6 +53,13 @@ export default async function ChantiersPage() {
           profile={safeProfile}
         />
       </main>
+
+      {/* Footer */}
+      <footer className="px-5 pb-6 max-w-2xl mx-auto">
+        <a href="https://ionnyx.fr/" className="text-xs text-primary hover:underline">
+          ← Voir le site IONNYX
+        </a>
+      </footer>
     </div>
   )
 }

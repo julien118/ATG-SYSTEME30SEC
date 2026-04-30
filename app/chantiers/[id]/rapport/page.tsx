@@ -38,7 +38,7 @@ export default async function RapportPage({ params }: { params: { id: string } }
           <p className="text-xs text-gray-400 truncate">{chantier.client_nom}</p>
         </div>
         <a href="https://ionnyx.fr/" className="text-sm font-medium border border-primary text-primary rounded-lg px-4 py-2 hover:bg-primary hover:text-white transition-colors whitespace-nowrap">
-          Voir le site complet →
+          Voir le site IONNYX →
         </a>
       </header>
 

@@ -39,7 +39,7 @@ export default function HomeClient() {
       <header className="px-6 py-4 pt-safe flex items-center justify-between">
         <LogoLink width={140} height={32} priority />
         <a href="https://ionnyx.fr/" className="text-sm font-medium border border-primary text-primary rounded-lg px-4 py-2 hover:bg-primary hover:text-white transition-colors whitespace-nowrap">
-          Voir le site complet →
+          Voir le site IONNYX →
         </a>
       </header>
 

@@ -20,7 +20,7 @@ export default async function NouveauChantierPage() {
         <LogoLink width={120} height={28} />
         <div className="flex-1" />
         <a href="https://ionnyx.fr/" className="text-sm font-medium border border-primary text-primary rounded-lg px-4 py-2 hover:bg-primary hover:text-white transition-colors whitespace-nowrap">
-          Voir le site complet →
+          Voir le site IONNYX →
         </a>
       </header>
 

@@ -100,7 +100,7 @@ export default function InscriptionPage() {
       <header className="px-6 py-4 pt-safe flex items-center justify-between">
         <LogoLink width={120} height={28} priority />
         <a href="https://ionnyx.fr/" className="text-sm font-medium border border-primary text-primary rounded-lg px-4 py-2 hover:bg-primary hover:text-white transition-colors whitespace-nowrap">
-          Voir le site complet →
+          Voir le site IONNYX →
         </a>
       </header>
 
