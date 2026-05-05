@@ -114,6 +114,7 @@ export default function HomeClient() {
               <p className="text-gray-500 text-sm mt-1">
                 Vérifiez votre boîte mail et cliquez sur le lien pour vous connecter.
               </p>
+              <p className="text-amber-600 text-xs mt-2">📬 Pensez à vérifier vos spams si vous ne le voyez pas.</p>
             </div>
           )}
         </div>

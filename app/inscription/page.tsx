@@ -85,10 +85,12 @@ export default function InscriptionPage() {
             Un lien de connexion a été envoyé à
           </p>
           <p className="font-semibold text-foreground mb-6">{email}</p>
-          <p className="text-gray-400 text-sm">
+          <p className="text-gray-500 text-sm mb-4">
             Cliquez sur le lien dans l&apos;email pour accéder à votre espace.
-            Pensez à vérifier vos spams.
           </p>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
+            📬 Si vous ne voyez pas l&apos;email, vérifiez votre dossier <strong>Spam</strong> ou <strong>Courrier indésirable</strong>.
+          </div>
         </div>
       </main>
     )
@@ -307,6 +309,7 @@ export default function InscriptionPage() {
               <div className="bg-input-focus border border-primary/20 rounded-xl p-4 animate-scale-in text-center">
                 <p className="text-primary font-medium">Lien envoyé !</p>
                 <p className="text-gray-500 text-sm mt-1">Vérifiez votre boîte mail.</p>
+                <p className="text-amber-600 text-xs mt-2">📬 Pensez à vérifier vos spams si vous ne le voyez pas.</p>
               </div>
             )}
           </div>
