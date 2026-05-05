@@ -141,8 +141,10 @@ async function buildPdf(chantierId: string): Promise<NextResponse> {
       const img = await fetchImg(photo.url)
       if (!img) continue
       const ratio = img.h / img.w
-      const imgW = PHOTO_W
-      const imgH = Math.min(imgW * ratio, 90)
+      let imgW = PHOTO_W
+      let imgH = imgW * ratio
+      if (imgH > 110) { imgH = 110; imgW = imgH / ratio }
+      if (imgW > PHOTO_W) { imgW = PHOTO_W; imgH = imgW * ratio }
       y = pb(doc, y, imgH + 15)
       try {
         doc.addImage(img.data, 'JPEG', M + (CW - imgW) / 2, y, imgW, imgH)
