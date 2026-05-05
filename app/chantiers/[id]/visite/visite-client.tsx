@@ -248,7 +248,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
   }
 
   return (
-    <div className="h-screen-safe flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-background">
       {/* HEADER FIXE */}
       <header className="flex-shrink-0 bg-white border-b border-border px-5 py-4 pt-safe">
         <div className="max-w-lg mx-auto flex items-center justify-between">

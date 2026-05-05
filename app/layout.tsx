@@ -61,11 +61,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr">
-      <body className={inter.className}>
-        <div className="w-full bg-primary text-white text-center text-sm font-medium sticky top-0 z-50" style={{padding: '10px 16px'}}>
+      <body className={`${inter.className} h-screen-safe flex flex-col`}>
+        <div className="flex-shrink-0 w-full bg-primary text-white text-center text-sm font-medium sticky top-0 z-50" style={{padding: '10px 16px'}}>
           Version de démo. Ce n&apos;est pas un logiciel. Sur mesure pour chaque entreprise.
         </div>
-        <ToastProvider>{children}</ToastProvider>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <ToastProvider>{children}</ToastProvider>
+        </div>
       </body>
     </html>
   )
