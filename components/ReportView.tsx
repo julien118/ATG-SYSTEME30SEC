@@ -85,14 +85,14 @@ export default function ReportView({ contenu, onUpdate }: ReportViewProps) {
             {obs.photos.length > 0 && (
               <div className="px-4 pb-3 space-y-3">
                 {obs.photos.map((photo, pi) => (
-                  <div key={pi}>
+                  <div key={pi} className="flex flex-col items-center">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={photo.url}
                       alt={photo.legende}
                       loading="lazy"
                       onClick={() => setFullscreenPhoto(photo.url)}
-                      className="max-w-full max-h-80 rounded-lg object-contain mx-auto cursor-pointer hover:opacity-95 transition-opacity"
+                      className="w-auto max-w-full max-h-96 rounded-lg cursor-pointer hover:opacity-95 transition-opacity"
                     />
                     <p className="text-xs text-gray-400 italic mt-1.5 text-center">{photo.legende}</p>
                   </div>
