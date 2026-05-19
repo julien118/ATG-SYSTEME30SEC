@@ -221,11 +221,6 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
     if (ending) return
     setEnding(true)
 
-    if (profile.rapports_generes >= 2) {
-      router.push('/essai-termine')
-      return
-    }
-
     await supabase
       .from('chantiers')
       .update({ statut: 'termine' })

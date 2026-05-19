@@ -26,6 +26,7 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
   )
   const [saving, setSaving] = useState(false)
   const [chantierId, setChantierId] = useState(chantier?.id ?? null)
+  const [error, setError] = useState<string | null>(null)
 
   // Auto-save existing chantier on blur
   const autoSave = async () => {
@@ -44,12 +45,13 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
   const handleStart = async () => {
     if (!clientNom.trim()) return
     setSaving(true)
+    setError(null)
 
     let id = chantierId
 
     if (!id) {
       // Create new chantier
-      const { data, error } = await supabase
+      const { data, error: insertError } = await supabase
         .from('chantiers')
         .insert({
           user_id: userId,
@@ -62,7 +64,9 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
         .select('id')
         .single()
 
-      if (error || !data) {
+      if (insertError || !data) {
+        console.error('[ChantierForm] insert chantier failed:', insertError)
+        setError(insertError?.message ?? 'Création impossible')
         setSaving(false)
         return
       }
@@ -126,7 +130,7 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
           value={objetTravaux}
           onChange={(e) => setObjetTravaux(e.target.value)}
           onBlur={autoSave}
-          placeholder="Ex: Rénovation salle de bain, ouverture mur porteur..."
+          placeholder="Ex: Ravalement complet façade, ITE, peinture extérieure, traitement fissures..."
           rows={3}
           className="input-ionnyx resize-none"
         />
@@ -146,6 +150,13 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
           className="input-ionnyx"
         />
       </div>
+
+      {/* Error visible */}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* CTA */}
       <button

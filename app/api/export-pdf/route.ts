@@ -12,13 +12,14 @@ const PH = 297
 const CW = PW - M * 2
 const PHOTO_W = CW * 0.80
 
+// Mode démo ATG : pas de check d'auth.
 function addFooter(doc: jsPDF) {
   const n = doc.getNumberOfPages()
   for (let i = 1; i <= n; i++) {
     doc.setPage(i)
     doc.setFontSize(7)
     doc.setTextColor(160, 160, 160)
-    doc.text('Rapport généré par IONNYX — IA', PW / 2, PH - 10, { align: 'center' })
+    doc.text('Rapport généré par ATG, propulsé par IONNYX', PW / 2, PH - 10, { align: 'center' })
     doc.text(`${i} / ${n}`, PW - M, PH - 10, { align: 'right' })
   }
 }
@@ -66,9 +67,6 @@ async function buildPdf(chantierId: string): Promise<NextResponse> {
       },
     }
   )
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: rapport } = await supabase
     .from('rapports')

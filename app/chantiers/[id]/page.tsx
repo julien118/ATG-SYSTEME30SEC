@@ -3,18 +3,17 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import LogoLink from '@/components/LogoLink'
 import ChantierForm from '@/components/ChantierForm'
+import { ATG_USER_ID } from '@/lib/atg'
 import type { Chantier } from '@/lib/types'
 
 export default async function ChantierDetailPage({ params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/inscription')
 
   const { data: chantier } = await supabase
     .from('chantiers')
     .select('*')
     .eq('id', params.id)
-    .eq('user_id', user.id)
+    .eq('user_id', ATG_USER_ID)
     .single()
 
   if (!chantier) redirect('/chantiers')
@@ -38,16 +37,12 @@ export default async function ChantierDetailPage({ params }: { params: { id: str
           </svg>
         </Link>
         <LogoLink width={120} height={28} />
-        <div className="flex-1" />
-        <a href="https://ionnyx.fr/" className="text-sm font-medium border border-primary text-primary rounded-lg px-4 py-2 hover:bg-primary hover:text-white transition-colors whitespace-nowrap">
-          Voir le site IONNYX →
-        </a>
       </header>
 
       <main className="px-5 py-6 max-w-lg mx-auto">
         <h1 className="text-xl font-bold text-foreground mb-1">Modifier le chantier</h1>
         <p className="text-gray-400 text-sm mb-6">{(chantier as Chantier).client_nom}</p>
-        <ChantierForm chantier={chantier as Chantier} userId={user.id} />
+        <ChantierForm chantier={chantier as Chantier} userId={ATG_USER_ID} />
       </main>
     </div>
   )

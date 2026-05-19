@@ -1,8 +1,8 @@
 {
-  "name": "IONNYX — Assistant de Visite",
-  "short_name": "IONNYX Demo",
-  "description": "Générez vos rapports de visite en 30 secondes",
-  "start_url": "/",
+  "name": "ATG — Système 30 Secondes",
+  "short_name": "ATG",
+  "description": "Du chantier au devis, sans rien retaper.",
+  "start_url": "/chantiers",
   "display": "standalone",
   "background_color": "#F8FAFC",
   "theme_color": "#10B981",

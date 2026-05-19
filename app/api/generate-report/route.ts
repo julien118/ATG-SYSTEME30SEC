@@ -3,8 +3,10 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { anthropic } from '@/lib/anthropic'
 import { SYSTEM_PROMPT, buildUserPrompt } from '@/lib/prompts'
+import { ATG_USER_ID } from '@/lib/atg'
 import type { Chantier, CaptureItem, RapportContenu } from '@/lib/types'
 
+// Mode démo ATG : pas de check d'auth, pas de limite "2 rapports".
 export async function POST(request: Request) {
   try {
   const cookieStore = cookies()
@@ -23,22 +25,19 @@ export async function POST(request: Request) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
   const { chantierId } = await request.json()
 
-  // Verify ownership
+  // Vérifie l'appartenance au user démo (RLS off, mais on garde le filtre).
   const { data: chantier } = await supabase
     .from('chantiers')
     .select('*')
     .eq('id', chantierId)
-    .eq('user_id', user.id)
+    .eq('user_id', ATG_USER_ID)
     .single()
 
   if (!chantier) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Check if this is a regeneration (rapport already exists)
+  // Détecte une régénération (rapport déjà existant).
   const { data: existingRapport } = await supabase
     .from('rapports')
     .select('id')
@@ -46,19 +45,6 @@ export async function POST(request: Request) {
     .single()
 
   const isRegeneration = !!existingRapport
-
-  // Trial limit check (only for first generation, not regeneration)
-  if (!isRegeneration) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('rapports_generes')
-      .eq('id', user.id)
-      .single()
-
-    if (profile && profile.rapports_generes >= 2) {
-      return NextResponse.json({ error: 'trial_limit_reached' }, { status: 403 })
-    }
-  }
 
   // Get captures
   const { data: captures } = await supabase
@@ -135,11 +121,6 @@ export async function POST(request: Request) {
     .from('chantiers')
     .update({ statut: 'rapport_genere' })
     .eq('id', chantierId)
-
-  // Increment counter only on first generation
-  if (!isRegeneration) {
-    await supabase.rpc('increment_rapports_generes', { user_id_param: user.id })
-  }
 
   return NextResponse.json({ rapport })
   } catch {

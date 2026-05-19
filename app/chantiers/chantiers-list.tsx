@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { Chantier, Profile } from '@/lib/types'
-import TrialBanner from '@/components/TrialBanner'
 import ChantierCard from '@/components/ChantierCard'
 import DeleteChantierModal from '@/components/DeleteChantierModal'
 import { useToast } from '@/components/ToastProvider'
@@ -16,13 +15,13 @@ interface ChantiersListProps {
   profile: Profile
 }
 
-export default function ChantiersList({ chantiers, profile }: ChantiersListProps) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export default function ChantiersList({ chantiers, profile: _profile }: ChantiersListProps) {
   const [tab, setTab] = useState<Tab>('tous')
   const [search, setSearch] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Chantier | null>(null)
   const router = useRouter()
   const toast = useToast()
-  const isTrialOver = profile.rapports_generes >= 2
 
   // Filter by tab
   const tabFiltered = chantiers.filter((c) => {
@@ -65,11 +64,6 @@ export default function ChantiersList({ chantiers, profile }: ChantiersListProps
 
   return (
     <div className="pb-24">
-      {/* Trial Banner */}
-      <div className="mb-4">
-        <TrialBanner rapportsGeneres={profile.rapports_generes} />
-      </div>
-
       {/* Tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1">
         {tabs.map(({ key, label, count }) => (
@@ -132,32 +126,16 @@ export default function ChantiersList({ chantiers, profile }: ChantiersListProps
         </div>
       )}
 
-      {/* FAB — hidden when trial is over */}
-      {!isTrialOver && (
-        <Link
-          href="/chantiers/nouveau"
-          className="fixed bottom-8 right-5 mb-safe w-14 h-14 btn-primary rounded-full flex items-center justify-center shadow-lg z-40 p-0"
-        >
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </Link>
-      )}
-
-      {/* Sticky CTA when trial is over */}
-      {isTrialOver && (
-        <div className="fixed bottom-0 inset-x-0 z-40 px-5 py-4 pb-safe bg-white border-t border-border">
-          <a
-            href={process.env.NEXT_PUBLIC_CONTACT_URL || '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-primary w-full text-base py-3.5 block text-center"
-          >
-            Échanger avec Julien →
-          </a>
-        </div>
-      )}
+      {/* FAB création */}
+      <Link
+        href="/chantiers/nouveau"
+        className="fixed bottom-8 right-5 mb-safe w-14 h-14 btn-primary rounded-full flex items-center justify-center shadow-lg z-40 p-0"
+      >
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+      </Link>
 
       {/* Delete modal */}
       {deleteTarget && (
@@ -174,7 +152,6 @@ export default function ChantiersList({ chantiers, profile }: ChantiersListProps
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-      {/* Illustration */}
       <div className="w-24 h-24 rounded-3xl bg-input-focus flex items-center justify-center mb-6">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -185,7 +162,7 @@ function EmptyState() {
         Aucune visite pour l&apos;instant
       </h2>
       <p className="text-gray-400 text-sm mb-8 max-w-xs">
-        Créez votre premier chantier et testez la capture terrain avec l&apos;IA.
+        Créez votre premier chantier et testez la capture terrain.
       </p>
       <Link href="/chantiers/nouveau" className="btn-primary text-base px-8 py-3">
         Créer ma première visite

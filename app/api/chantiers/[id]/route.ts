@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { ATG_USER_ID } from '@/lib/atg'
+
+// Mode démo ATG : pas de check d'auth, RLS désactivée côté DB.
+// On garde toutefois la vérification que le chantier appartient bien
+// à ATG_USER_ID pour éviter les suppressions croisées.
 
 export async function DELETE(
   _request: Request,
@@ -23,19 +28,16 @@ export async function DELETE(
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
   const chantierId = params.id
 
-  // Verify ownership
+  // Vérifie que le chantier existe et appartient au user démo.
   const { data: chantier } = await supabase
     .from('chantiers')
     .select('id, user_id')
     .eq('id', chantierId)
     .single()
 
-  if (!chantier || chantier.user_id !== user.id) {
+  if (!chantier || chantier.user_id !== ATG_USER_ID) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 

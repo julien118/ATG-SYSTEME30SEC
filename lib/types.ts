@@ -71,3 +71,108 @@ export interface Rapport {
   created_at: string
   updated_at: string
 }
+
+// =============================================================
+// Phase 2 — Module Devis Express ATG
+// =============================================================
+
+export interface ArticleBibliotheque {
+  id: string
+  costructor_article_id: string
+  libelle: string
+  unite: string
+  prix_vente: number
+  mots_cles: string[] | null
+  synchronise_le: string
+}
+
+// Article dans une section de devis (avec quantité saisie ou null avant métrés).
+export interface ArticleDevis {
+  costructor_article_id: string
+  libelle: string
+  unite: string
+  prix_vente: number
+  quantite: number | null
+  // Description technique 3-7 lignes, générée par l'IA, ancrée dans le contexte
+  // de la zone (Façade Sud / Nord / Pignon Est) et des observations dictées.
+  // Visible avant la saisie des métrés (Phase A) puis poussée dans Costructor.
+  description_technique: string
+}
+
+export interface SectionDevis {
+  nom: string // ex: "FAÇADE SUD"
+  articles: ArticleDevis[]
+}
+
+export type DevisStatut =
+  | 'brouillon'
+  | 'sections_proposees'
+  | 'metres_en_cours'
+  | 'pousse_costructor'
+  | 'echec'
+
+export interface Devis {
+  id: string
+  chantier_id: string
+  statut: DevisStatut
+  sections_proposees: SectionDevis[] | null
+  sections_finales: SectionDevis[] | null
+  total_ht: number | null
+  total_ttc: number | null
+  costructor_devis_id: string | null
+  costructor_devis_url: string | null
+  pousse_le: string | null
+  erreur_push: string | null
+  cree_le: string
+  modifie_le: string
+}
+
+// ---------- Sorties JSON attendues des prompts ----------
+
+export interface PropositionDevisIA {
+  sections: SectionDevis[]
+}
+
+export interface MetricsParseResult {
+  updates: Array<{
+    section_name: string
+    article_label: string
+    quantity: number
+    confidence: 'high' | 'medium' | 'low'
+  }>
+  ignored: string[]
+}
+
+// ---------- Types API Costructor (validés par l'audit) ----------
+
+export type CostructorQuoteLine =
+  | { type: 'text'; description: string } // séparateur de section
+  | {
+      type: 'product'
+      product: string // ID produit (prod_xxx)
+      description: string // libellé colonne DÉSIGNATION
+      quantity: number
+      sellPrice: number // EN CENTIMES
+      unit: string // ID unité (unit_xxx)
+    }
+
+export interface CostructorQuotePayload {
+  customer: string // ID contact (cnt_xxx)
+  description: string
+  lines: CostructorQuoteLine[]
+}
+
+export interface CostructorQuoteResponse {
+  id: string
+  reference?: string
+  total?: number // en centimes
+  url?: string
+}
+
+export interface CostructorProduct {
+  id: string
+  name: string
+  description?: string
+  unit?: string
+  sellPrice?: number
+}

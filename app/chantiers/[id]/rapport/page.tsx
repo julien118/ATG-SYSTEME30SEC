@@ -3,18 +3,17 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import LogoLink from '@/components/LogoLink'
 import RapportClient from './rapport-client'
+import { ATG_USER_ID } from '@/lib/atg'
 import type { RapportContenu } from '@/lib/types'
 
 export default async function RapportPage({ params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/inscription')
 
   const { data: chantier } = await supabase
     .from('chantiers')
     .select('id, client_nom, user_id')
     .eq('id', params.id)
-    .eq('user_id', user.id)
+    .eq('user_id', ATG_USER_ID)
     .single()
 
   if (!chantier) redirect('/chantiers')
@@ -37,9 +36,6 @@ export default async function RapportPage({ params }: { params: { id: string } }
           <LogoLink width={120} height={28} />
           <p className="text-xs text-gray-400 truncate">{chantier.client_nom}</p>
         </div>
-        <a href="https://ionnyx.fr/" className="text-sm font-medium border border-primary text-primary rounded-lg px-4 py-2 hover:bg-primary hover:text-white transition-colors whitespace-nowrap">
-          Voir le site IONNYX →
-        </a>
       </header>
 
       <RapportClient

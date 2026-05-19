@@ -1,8 +1,9 @@
-import { updateSession } from '@/lib/supabase/middleware'
-import { type NextRequest } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 
-export async function middleware(request: NextRequest) {
-  return await updateSession(request)
+// Middleware passthrough (mode démo ATG, pas d'auth).
+// Conservé en place pour ne pas casser le matcher d'exclusion des assets.
+export function middleware(_request: NextRequest) {
+  return NextResponse.next()
 }
 
 export const config = {

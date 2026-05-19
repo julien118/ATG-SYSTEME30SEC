@@ -1,14 +1,10 @@
-import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
 import LogoLink from '@/components/LogoLink'
 import ChantierForm from '@/components/ChantierForm'
+import { ATG_USER_ID } from '@/lib/atg'
 
-export default async function NouveauChantierPage() {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/inscription')
-
+// Mode démo ATG : pas d'auth, user_id en dur passé au formulaire.
+export default function NouveauChantierPage() {
   return (
     <div className="min-h-screen-safe bg-background">
       <header className="sticky top-0 z-30 bg-white border-b border-border px-5 py-4 pt-safe flex items-center gap-3">
@@ -18,16 +14,12 @@ export default async function NouveauChantierPage() {
           </svg>
         </Link>
         <LogoLink width={120} height={28} />
-        <div className="flex-1" />
-        <a href="https://ionnyx.fr/" className="text-sm font-medium border border-primary text-primary rounded-lg px-4 py-2 hover:bg-primary hover:text-white transition-colors whitespace-nowrap">
-          Voir le site IONNYX →
-        </a>
       </header>
 
       <main className="px-5 py-6 max-w-lg mx-auto page-enter">
         <h1 className="text-xl font-bold text-foreground mb-1">Nouvelle visite</h1>
         <p className="text-gray-400 text-sm mb-6">Renseignez les informations du chantier.</p>
-        <ChantierForm userId={user.id} />
+        <ChantierForm userId={ATG_USER_ID} />
       </main>
     </div>
   )

@@ -6,31 +6,20 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'IONNYX — Générez vos rapports de visite en 30 secondes',
-  description: 'Prenez des photos, dictez vos observations sur le chantier. L\'IA génère automatiquement un rapport de visite professionnel. Testez gratuitement.',
+  title: 'ATG — Système 30 Secondes',
+  description: 'Du chantier au devis, sans rien retaper. Visite chantier, dictée vocale, photos, compte rendu et devis Costructor générés automatiquement.',
   manifest: '/manifest.json',
-  metadataBase: new URL('https://demo.ionnyx.fr'),
   openGraph: {
-    title: 'IONNYX — Assistant de Visite Terrain',
-    description: 'Prenez des photos, dictez vos observations. L\'IA génère votre rapport de visite en 30 secondes. 2 rapports gratuits pour tester.',
-    url: 'https://demo.ionnyx.fr',
-    siteName: 'IONNYX',
+    title: 'ATG — Système 30 Secondes',
+    description: 'Du chantier au devis, sans rien retaper.',
+    siteName: 'ATG',
     locale: 'fr_FR',
     type: 'website',
-    images: [
-      {
-        url: '/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'IONNYX — Assistant de Visite Terrain',
-      },
-    ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'IONNYX — Rapports de visite IA en 30 secondes',
-    description: 'Photos + observations vocales → rapport professionnel automatique. Testez gratuitement.',
-    images: ['/og-image.png'],
+    title: 'ATG — Système 30 Secondes',
+    description: 'Du chantier au devis, sans rien retaper.',
   },
   icons: {
     icon: [
@@ -40,8 +29,8 @@ export const metadata: Metadata = {
     apple: '/icon-192.png',
   },
   robots: {
-    index: true,
-    follow: true,
+    index: false,
+    follow: false,
   },
 }
 
@@ -62,9 +51,6 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body className={`${inter.className} h-screen-safe flex flex-col`}>
-        <div className="flex-shrink-0 w-full bg-primary text-white text-center text-sm font-medium sticky top-0 z-50" style={{padding: '10px 16px'}}>
-          Version de démo. Ce n&apos;est pas un logiciel. Sur mesure pour chaque entreprise.
-        </div>
         <div className="flex-1 min-h-0 overflow-y-auto">
           <ToastProvider>{children}</ToastProvider>
         </div>
