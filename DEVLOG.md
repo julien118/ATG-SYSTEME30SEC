@@ -80,6 +80,30 @@ Chantier "Résidence Charles Daquin" (`f0ff75dc-b2f6-4034-95b3-d6c417c84456`) :
 
 ---
 
+## 2026-05-21 — Reprise dev sur main (3 améliorations)
+
+Reprise sur `main` (Phase 1 + Phase 2 mergées entre temps). 3 améliorations livrées en série, validées une à une.
+
+### Amélioration 1 — Téléphone + email dans le formulaire visite
+- `components/ChantierForm.tsx` : 2 nouveaux champs `client_telephone` (tel) + `client_email` (email), auto-save sur blur, persistés en INSERT/UPDATE, pré-remplis en édition.
+- **Pas de migration SQL** : les colonnes existaient déjà depuis `001_demo_schema.sql:67-68`, le formulaire ne les exposait juste pas. Confirmé via SELECT direct sur Supabase ATG.
+- Bénéfice gratuit : `lib/prompts.ts:62-63` consomme déjà ces champs → rapport IA enrichi sans changer le prompt.
+
+### Amélioration 2 — Matching / création contact Costructor (fin du contact démo hardcodé)
+- `lib/costructor.ts` : nouveaux `listerContacts()` + `trouverOuCreerContact()`. Suppression de `creerContactParticulier` (jamais appelée).
+- Matching : `email` exact (case-insensitive) > `téléphone` 9 derniers chiffres (gère "06 12..." vs "+33 6 12...") > `nom` exact après normalisation accents/casse. Fragilité du nom signalée en commentaire.
+- Création contact : `firstName=""` accepté par Costructor (fullName = lastName), `addresses:[{address:{postal_code...}, primary:true}]` (format pluriel + snake_case validé par POST de test), parse adresse FR best-effort via regex `^(.+?)\s+(\d{5})\s+(.+)$`.
+- `app/api/devis/pousser/route.ts` : `COSTRUCTOR_DEMO_CUSTOMER_ID` remplacé par `trouverOuCreerContact(chantier)`. Log du `matchType`.
+- Tests : `scripts/test-contact-matching.mts` (4 scénarios, 4/4) + push E2E réel sur "Mr et Mme Martin" → contact créé `cnt_01ks5yn5cer1rhm2dcrcpz2erv`, quote `quote_01ks5yn5ne7g8njd8bjhad7rk9`, total intact, ancien quote 404 (idempotence OK).
+
+### Amélioration 3 — Structure ATG du devis (config centralisée)
+- Nouveau `lib/atg-devis-structure.ts` — **point d'entrée unique** pour ajuster libellés / ordre / mots-clés après kickoff Olivier. `STRUCTURE_DEVIS_ATG = { entete, sectionsTransversales[] }`.
+- `construirePayloadDevis` refactoré : émet 1) en-tête QUALIFICATIONS ATG en HTML (`<strong>` + puces `<br>`), 2) sections transversales (`POSTE DÉPLACEMENT`, `ÉCHAFAUDAGE`, `LAVAGE`, `TRAITEMENT`) avec articles captés par mots-clés (normalisation lowercase + diacritiques + substring match), 3) façades restantes.
+- Section façade vide après extraction : **non émise** (évite les titres orphelins). Section transversale vide : **émise** (matérialise la structure pour ajout manuel côté Costructor).
+- Test : `scripts/test-devis-structure-atg.mts` — scénario M. et Mme Dupont 3 façades reproduit en mémoire, total HT calculé **4 917 €** / TTC **5 408,70 €**, 9/9 assertions (math + ordre + captage).
+
+---
+
 ## Pièges techniques résolus (à ne pas re-vivre)
 
 1. **RLS active malgré DISABLE** → SQL purge des policies + ALTER TABLE DISABLE
@@ -90,22 +114,29 @@ Chantier "Résidence Charles Daquin" (`f0ff75dc-b2f6-4034-95b3-d6c417c84456`) :
 6. **Doublons brouillons Costructor à chaque push** → idempotence via `supprimerDevis()` avant POST
 7. **Logo ATG officiel avec numéro de téléphone** → crop top 38px + fond transparent via PIL
 8. **Validator hook signale Next 16** sur projet Next 14 → faux positifs ignorés
+9. **Filtres `/contacts?email=`, `?phone=`, `?search=` ignorés par Costructor** → lister tout + filtrer côté Next.js
+10. **`DELETE /contacts/{id}` → 405** → impossible de nettoyer un contact via l'API externe, seule l'UI Costructor le permet
+11. **Format adresse contact Costructor** : `addresses:[{address:{street,city,postal_code,country}, primary:true}]` (pluriel + `postal_code` snake_case) — `address:{zip}` est silencieusement ignoré
 
 ---
 
-## État au 2026-05-19
+## État au 2026-05-21
 
-- Tout marche en E2E local sur `http://localhost:3001`
-- Devis Costructor témoin en place pour plan B
-- Mémoire utilisateur sauvegardée dans `~/.claude/projects/-Users-julienguedet-Documents-Github-D-MONSTRATION-ATG/memory/`
+- Tout marche en E2E local
+- Formulaire visite : nom + adresse + téléphone + email + objet travaux + date
+- Push devis : matching contact réel (email > téléphone > nom > création), plus de contact démo hardcodé
+- Structure ATG du devis centralisée dans `lib/atg-devis-structure.ts`
+- Scripts de test : `scripts/test-contact-matching.mts` + `scripts/test-devis-structure-atg.mts`
+- `COSTRUCTOR_DEMO_CUSTOMER_ID` n'est plus utilisé par le code (laissé dans `.env.local` mais inutile)
 
 ## Si on relance le projet plus tard
 
 1. `npm install` puis `npm run dev` sur port 3001
-2. Variables d'env critiques dans `.env.local` : Supabase + Anthropic + Groq + COSTRUCTOR_API_KEY + COSTRUCTOR_DEMO_CUSTOMER_ID
+2. Variables d'env critiques dans `.env.local` : Supabase + Anthropic + Groq + COSTRUCTOR_API_KEY (COSTRUCTOR_DEMO_CUSTOMER_ID plus utilisée depuis l'amélioration 2)
 3. Vérifier que le bucket Supabase Storage `photos` est public et `audio` privé
 4. Vérifier que RLS reste `false` sur les 4 tables ATG + `devis`
 5. Si quelque chose plante côté DB : vérifier que ce n'est pas la RLS qui s'est réactivée
+6. Pour rejouer les scripts de test : `npx tsx --env-file=.env.local scripts/test-contact-matching.mts` (ou `test-devis-structure-atg.mts`)
 
 ## Si on veut industrialiser (post-démo)
 
@@ -115,3 +146,13 @@ Chantier "Résidence Charles Daquin" (`f0ff75dc-b2f6-4034-95b3-d6c417c84456`) :
 - Multi-tenant : table `companies` + `company_id` partout
 - Déploiement Vercel prod + URL personnalisée
 - Régler le souci TVA "non applicable art. 293 B" côté compte Costructor d'Olivier (passage SARL au lieu de franchise base)
+
+## Points en attente avant kickoff / bascule sur le compte d'Olivier
+
+1. **Consolider les migrations SQL manquantes.** Tous les changements Phase 1 (RLS désactivée, FK auth.users droppées, single-user) + Phase 2 (tables `devis` + `bibliotheque_costructor`, seed 11 articles, colonnes JSONB) ont été appliqués out-of-band sur Supabase ATG. Rien n'est dans `supabase/migrations/`. À regrouper dans un `002_atg_consolidation.sql` (ou plusieurs) avant la bascule pour que le compte d'Olivier soit reproductible depuis zéro.
+2. **Valider la structure devis ATG au kickoff** avec les vrais devis d'Olivier sous les yeux. Trois questions ouvertes :
+   - Préserver les sections façade même quand leurs articles sont aspirés par les transversales ? (Olivier parle d'organisation "façade par façade" en R2 — peut contredire le comportement actuel où une façade vidée disparaît.)
+   - Toggle pour masquer les sections transversales vides (POSTE DÉPLACEMENT, ÉCHAFAUDAGE quand aucun article ne s'y trouve) ?
+   - Ajuster les `motsCles` après avoir vu les libellés réels qu'il utilise.
+   - Tout se passe dans `lib/atg-devis-structure.ts`, c'est conçu pour.
+3. **Optimiser `listerContacts()`.** Charge tous les contacts à chaque push (les filtres serveur Costructor sont ignorés, cf. piège #9). OK sur le démo (5 contacts), problématique sur le compte d'Olivier (potentiellement des centaines de clients). Pistes : pagination + cache local Supabase + index sur les colonnes de matching. À traiter avant la bascule sinon les push deviendront lents et le risque de doublon augmente avec la taille de la base.

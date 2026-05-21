@@ -176,3 +176,36 @@ export interface CostructorProduct {
   unit?: string
   sellPrice?: number
 }
+
+export interface CostructorContactEmail {
+  email: string
+  primary: boolean
+}
+
+export interface CostructorContactPhone {
+  phone: string
+  primary: boolean
+}
+
+export interface CostructorContact {
+  id: string
+  type: string // 'client' | 'lead' | ...
+  legalStatus: string // 'individual' | 'company' | ...
+  firstName: string | null
+  lastName: string | null
+  companyName: string | null
+  fullName: string | null
+  emails: CostructorContactEmail[]
+  phones: CostructorContactPhone[]
+  // Mirroir du primary, présent dans la réponse mais redondant à l'envoi.
+  email: string | null
+  phone: string | null
+}
+
+export type ContactMatchType = 'email' | 'phone' | 'nom' | 'created'
+
+export interface ResultatRechercheContact {
+  contactId: string
+  cree: boolean
+  matchType: ContactMatchType
+}

@@ -10,10 +10,16 @@
 // Réponses : { data: {...|[...]}, metadata: {...} }
 // Auth : Authorization: Bearer <COSTRUCTOR_API_KEY>
 
+import {
+  STRUCTURE_DEVIS_ATG,
+  trouverSectionTransversale,
+} from './atg-devis-structure'
 import type {
+  CostructorContact,
   CostructorProduct,
   CostructorQuotePayload,
   CostructorQuoteResponse,
+  ResultatRechercheContact,
   SectionDevis,
 } from './types'
 
@@ -87,29 +93,135 @@ export async function listerProduits(): Promise<CostructorProduct[]> {
 
 // ---------- Contacts ----------
 
-export async function creerContactParticulier(input: {
-  firstName: string
-  lastName: string
-  street?: string
-  city?: string
-  zip?: string
-  country?: string
-}): Promise<{ id: string }> {
-  return costructorFetch<{ id: string }>('/contacts', {
-    method: 'POST',
-    body: JSON.stringify({
-      type: 'client',
-      legalStatus: 'individual',
-      firstName: input.firstName,
-      lastName: input.lastName,
-      address: {
-        street: input.street ?? '',
-        city: input.city ?? '',
-        zip: input.zip ?? '',
-        country: input.country ?? 'FR',
+// L'API Costructor IGNORE silencieusement les query params ?email, ?phone,
+// ?search, ?q sur /contacts (testé 2026-05-21). On liste donc tout et on filtre
+// en mémoire. À revoir si la base d'Olivier dépasse quelques centaines de
+// contacts : il faudra paginer et/ou stocker un index côté Supabase.
+export async function listerContacts(): Promise<CostructorContact[]> {
+  return costructorFetch<CostructorContact[]>('/contacts?limit=1000')
+}
+
+// Normalisations pour le matching.
+function normaliserEmail(s: string | null | undefined): string {
+  return (s ?? '').trim().toLowerCase()
+}
+
+// FR : on garde les 9 derniers chiffres (612345678 sans préfixe pays).
+// Tolère "06 12 34 56 78", "+33 6 12...", "0612345678", "06-12-..." → 612345678.
+function normaliserTelephone(s: string | null | undefined): string {
+  const digits = (s ?? '').replace(/\D/g, '')
+  return digits.slice(-9)
+}
+
+function normaliserNom(s: string | null | undefined): string {
+  return (s ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+}
+
+// Best-effort parse d'une adresse française "7 Rue Marie de Luxembourg 41100 Vendôme".
+// Extrait le code postal 5 chiffres : avant = rue, après = ville.
+export function parseAdresseFr(adresse: string | null | undefined): {
+  street: string
+  city: string
+  zip: string
+} {
+  const a = (adresse ?? '').trim()
+  if (!a) return { street: '', city: '', zip: '' }
+  const m = a.match(/^(.+?)\s+(\d{5})\s+(.+)$/)
+  if (m) return { street: m[1].trim(), city: m[3].trim(), zip: m[2] }
+  return { street: a, city: '', zip: '' }
+}
+
+export interface RechercheContactInput {
+  client_nom: string
+  client_email?: string | null
+  client_telephone?: string | null
+  client_adresse?: string | null
+}
+
+// Cherche un contact existant par email > téléphone > nom, sinon le crée.
+// Le matching par nom est volontairement strict (égalité exacte après
+// normalisation) car notre champ `client_nom` est en saisie libre — un fuzzy
+// match créerait plus de faux positifs qu'il n'éviterait de doublons.
+export async function trouverOuCreerContact(
+  input: RechercheContactInput,
+): Promise<ResultatRechercheContact> {
+  const contacts = await listerContacts()
+
+  const emailNorm = normaliserEmail(input.client_email)
+  const phoneNorm = normaliserTelephone(input.client_telephone)
+  const nomNorm = normaliserNom(input.client_nom)
+
+  // 1) Email exact (signal fort)
+  if (emailNorm) {
+    const match = contacts.find((c) => {
+      if (normaliserEmail(c.email) === emailNorm) return true
+      return (c.emails ?? []).some(
+        (e) => normaliserEmail(e.email) === emailNorm,
+      )
+    })
+    if (match) return { contactId: match.id, cree: false, matchType: 'email' }
+  }
+
+  // 2) Téléphone normalisé (signal fort)
+  if (phoneNorm.length >= 9) {
+    const match = contacts.find((c) => {
+      if (normaliserTelephone(c.phone) === phoneNorm) return true
+      return (c.phones ?? []).some(
+        (p) => normaliserTelephone(p.phone) === phoneNorm,
+      )
+    })
+    if (match) return { contactId: match.id, cree: false, matchType: 'phone' }
+  }
+
+  // 3) Nom exact après normalisation (signal faible — fragile)
+  if (nomNorm) {
+    const match = contacts.find((c) => {
+      const candidats = [
+        c.fullName,
+        c.companyName,
+        c.firstName && c.lastName ? `${c.firstName} ${c.lastName}` : null,
+        c.firstName && c.lastName ? `${c.lastName} ${c.firstName}` : null,
+      ].filter(Boolean) as string[]
+      return candidats.some((n) => normaliserNom(n) === nomNorm)
+    })
+    if (match) return { contactId: match.id, cree: false, matchType: 'nom' }
+  }
+
+  // 4) Aucun match → création.
+  // On met tout `client_nom` dans lastName et firstName='' : Costructor accepte
+  // et fullName devient juste "client_nom" (au lieu d'un split qui produit des
+  // noms moches du type "Daquin Résidence Charles" pour les noms de chantier).
+  const { street, city, zip } = parseAdresseFr(input.client_adresse)
+  const email = input.client_email?.trim()
+  const phone = input.client_telephone?.trim()
+
+  const body: Record<string, unknown> = {
+    type: 'client',
+    legalStatus: 'individual',
+    firstName: '',
+    lastName: input.client_nom.trim(),
+  }
+  if (street || city || zip) {
+    body.addresses = [
+      {
+        address: { street, city, postal_code: zip, country: 'FR' },
+        primary: true,
       },
-    }),
+    ]
+  }
+  if (email) body.emails = [{ email, primary: true }]
+  if (phone) body.phones = [{ phone, primary: true }]
+
+  const created = await costructorFetch<{ id: string }>('/contacts', {
+    method: 'POST',
+    body: JSON.stringify(body),
   })
+  return { contactId: created.id, cree: true, matchType: 'created' }
 }
 
 // ---------- Devis ----------
@@ -162,7 +274,51 @@ export function calculerTotalTTC(totalHT: number): number {
   return Math.round(totalHT * 1.1 * 100) / 100
 }
 
-// Construit le payload Costructor.
+// Construit la ligne `product` Costructor à partir d'un article du devis.
+// Extrait dans une fonction parce que ce même article peut être émis depuis
+// une section transversale ou depuis une section façade.
+function ligneProduit(
+  article: SectionDevis['articles'][number],
+): CostructorQuotePayload['lines'][number] {
+  // Description Costructor : libellé en titre HTML + description technique en dessous.
+  // L'éditeur Costructor préserve les balises HTML ; les sauts \n bruts sont
+  // strippés à l'affichage. On utilise <strong> + <br><br> pour forcer le
+  // rendu visuel d'un titre suivi de paragraphes lisibles.
+  const desc = article.description_technique?.trim()
+  let fullDescription: string
+  if (desc && desc !== article.libelle) {
+    const descHtml = desc
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .join('<br><br>')
+    fullDescription = `<strong>${article.libelle}</strong><br><br>${descHtml}`
+  } else {
+    fullDescription = `<strong>${article.libelle}</strong>`
+  }
+  return {
+    type: 'product',
+    product: article.costructor_article_id,
+    description: fullDescription,
+    quantity: article.quantite as number, // garanti non-null par le caller
+    sellPrice: eurosVersCentimes(article.prix_vente),
+    unit: uniteVersCostructorId(article.unite),
+  }
+}
+
+// Construit le payload Costructor selon la structure ATG (voir
+// `lib/atg-devis-structure.ts` pour ajuster l'ordre / les libellés / le matching).
+//
+// L'ordre des lignes produites :
+//   1. En-tête QUALIFICATIONS ATG (lignes type:'text')
+//   2. Chaque section transversale (Déplacement, Échafaudage, Lavage, Traitement) :
+//      titre + articles extraits des sections façade par mots-clés
+//   3. Chaque section façade restante : titre + articles non captés
+//
+// Les articles sans quantité (null ou <= 0) sont skippés. Une section façade
+// dont tous les articles ont été captés par les sections transversales n'est
+// pas émise (évite les titres orphelins).
+//
 // `sections[].articles[].prix_vente` est en euros (DB), converti en centimes ici.
 export function construirePayloadDevis(args: {
   contactId: string
@@ -171,37 +327,52 @@ export function construirePayloadDevis(args: {
 }): CostructorQuotePayload {
   const lines: CostructorQuotePayload['lines'] = []
 
-  for (const section of args.sections) {
-    // Séparateur de section : type "text" (PAS "section" qui crée des placeholders parasites).
-    lines.push({ type: 'text', description: section.nom })
+  // 1) En-tête QUALIFICATIONS ATG.
+  const entete = STRUCTURE_DEVIS_ATG.entete
+  if (entete.titre || entete.lignes.length > 0) {
+    const puces = entete.lignes.map((l) => `• ${l}`).join('<br>')
+    const enteteHtml = entete.titre
+      ? `<strong>${entete.titre}</strong>${puces ? `<br><br>${puces}` : ''}`
+      : puces
+    lines.push({ type: 'text', description: enteteHtml })
+  }
 
-    for (const article of section.articles) {
-      if (article.quantite == null || article.quantite <= 0) continue
-      // Description Costructor : libellé en titre HTML + description technique en dessous.
-      // L'éditeur Costructor préserve les balises HTML ; les sauts \n bruts sont
-      // strippés à l'affichage. On utilise <strong> + <br><br> pour forcer le
-      // rendu visuel d'un titre suivi de paragraphes lisibles.
-      const desc = article.description_technique?.trim()
-      let fullDescription: string
-      if (desc && desc !== article.libelle) {
-        // Convertit les sauts \n\n du paragraphes en <br><br> HTML.
-        const descHtml = desc
-          .split(/\n{2,}/)
-          .map((p) => p.trim())
-          .filter(Boolean)
-          .join('<br><br>')
-        fullDescription = `<strong>${article.libelle}</strong><br><br>${descHtml}`
-      } else {
-        fullDescription = `<strong>${article.libelle}</strong>`
-      }
-      lines.push({
-        type: 'product',
-        product: article.costructor_article_id,
-        description: fullDescription,
-        quantity: article.quantite,
-        sellPrice: eurosVersCentimes(article.prix_vente),
-        unit: uniteVersCostructorId(article.unite),
-      })
+  // 2) Pré-classification des articles : pour chaque article (avec quantité),
+  // détermine s'il va dans une section transversale ou dans sa section façade.
+  // On garde la référence d'origine pour conserver l'ordre interne par façade.
+  const articlesValides = args.sections.flatMap((s) =>
+    s.articles
+      .filter((a) => a.quantite != null && a.quantite > 0)
+      .map((article) => ({
+        article,
+        sectionOrigine: s.nom,
+        sectionTransversale: trouverSectionTransversale(article.libelle),
+      })),
+  )
+
+  // 3) Sections transversales (titre + articles captés), dans l'ordre déclaré.
+  for (const transv of STRUCTURE_DEVIS_ATG.sectionsTransversales) {
+    const captures = articlesValides.filter(
+      (a) => a.sectionTransversale === transv.titre,
+    )
+    lines.push({ type: 'text', description: transv.titre })
+    for (const { article } of captures) {
+      lines.push(ligneProduit(article))
+    }
+  }
+
+  // 4) Sections façade restantes : on parcourt les sections d'entrée dans leur
+  // ordre d'origine et on émet les articles non captés. Une section façade vide
+  // après filtrage n'est PAS émise (pas de titre orphelin).
+  for (const section of args.sections) {
+    const restants = articlesValides.filter(
+      (a) =>
+        a.sectionOrigine === section.nom && a.sectionTransversale === null,
+    )
+    if (restants.length === 0) continue
+    lines.push({ type: 'text', description: section.nom })
+    for (const { article } of restants) {
+      lines.push(ligneProduit(article))
     }
   }
 

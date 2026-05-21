@@ -12,6 +12,7 @@ import {
   construirePayloadDevis,
   pousserDevis,
   supprimerDevis,
+  trouverOuCreerContact,
 } from '@/lib/costructor'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Chantier, Devis, SectionDevis } from '@/lib/types'
@@ -53,13 +54,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Devis sans sections' }, { status: 400 })
     }
 
-    const contactId = process.env.COSTRUCTOR_DEMO_CUSTOMER_ID
-    if (!contactId) {
+    // Rapprochement client : on cherche le contact existant par email > téléphone > nom,
+    // sinon on en crée un. Ça remplace l'attribution à un contact démo hardcodé.
+    if (!chantier.client_nom?.trim()) {
       return NextResponse.json(
-        { error: 'COSTRUCTOR_DEMO_CUSTOMER_ID manquant dans .env.local' },
-        { status: 500 },
+        { error: 'Chantier sans client_nom : impossible de matcher un contact Costructor' },
+        { status: 400 },
       )
     }
+    const matchContact = await trouverOuCreerContact({
+      client_nom: chantier.client_nom,
+      client_email: chantier.client_email,
+      client_telephone: chantier.client_telephone,
+      client_adresse: chantier.client_adresse,
+    })
+    const contactId = matchContact.contactId
+    console.log(
+      `[api/devis/pousser] contact ${matchContact.matchType} : ${contactId} pour "${chantier.client_nom}"`,
+    )
 
     const total_ht = calculerTotalHT(sections)
     const total_ttc = calculerTotalTTC(total_ht)

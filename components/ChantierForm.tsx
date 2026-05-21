@@ -18,6 +18,8 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
 
   const [clientNom, setClientNom] = useState(chantier?.client_nom ?? '')
   const [clientAdresse, setClientAdresse] = useState(chantier?.client_adresse ?? '')
+  const [clientTelephone, setClientTelephone] = useState(chantier?.client_telephone ?? '')
+  const [clientEmail, setClientEmail] = useState(chantier?.client_email ?? '')
   const [objetTravaux, setObjetTravaux] = useState(chantier?.objet_travaux ?? '')
   const [dateVisite, setDateVisite] = useState(
     chantier?.date_visite
@@ -36,6 +38,8 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
       .update({
         client_nom: clientNom,
         client_adresse: clientAdresse,
+        client_telephone: clientTelephone || null,
+        client_email: clientEmail || null,
         objet_travaux: objetTravaux,
         date_visite: dateVisite ? new Date(dateVisite).toISOString() : null,
       })
@@ -57,6 +61,8 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
           user_id: userId,
           client_nom: clientNom.trim(),
           client_adresse: clientAdresse || null,
+          client_telephone: clientTelephone.trim() || null,
+          client_email: clientEmail.trim() || null,
           objet_travaux: objetTravaux || null,
           date_visite: dateVisite ? new Date(dateVisite).toISOString() : null,
           statut: 'en_cours',
@@ -79,6 +85,8 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
         .update({
           client_nom: clientNom.trim(),
           client_adresse: clientAdresse || null,
+          client_telephone: clientTelephone.trim() || null,
+          client_email: clientEmail.trim() || null,
           objet_travaux: objetTravaux || null,
           date_visite: dateVisite ? new Date(dateVisite).toISOString() : null,
           statut: 'en_cours',
@@ -117,6 +125,42 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
           value={clientAdresse}
           onChange={setClientAdresse}
           onBlur={autoSave}
+        />
+      </div>
+
+      {/* Téléphone */}
+      <div>
+        <label htmlFor="client_telephone" className="block text-sm font-medium text-foreground mb-1.5">
+          Téléphone client
+        </label>
+        <input
+          id="client_telephone"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          value={clientTelephone}
+          onChange={(e) => setClientTelephone(e.target.value)}
+          onBlur={autoSave}
+          placeholder="Ex: 06 12 34 56 78"
+          className="input-ionnyx"
+        />
+      </div>
+
+      {/* Email */}
+      <div>
+        <label htmlFor="client_email" className="block text-sm font-medium text-foreground mb-1.5">
+          Email client
+        </label>
+        <input
+          id="client_email"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          value={clientEmail}
+          onChange={(e) => setClientEmail(e.target.value)}
+          onBlur={autoSave}
+          placeholder="Ex: martin@example.com"
+          className="input-ionnyx"
         />
       </div>
 
