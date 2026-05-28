@@ -34,3 +34,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .mcp.json
+
+# données clients réelles (devis d'Olivier aspirés — PII de tiers, jamais commitées)
+data/devis-olivier/
