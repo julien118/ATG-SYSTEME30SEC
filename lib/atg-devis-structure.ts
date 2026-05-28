@@ -41,7 +41,7 @@ export const STRUCTURE_DEVIS_ATG: StructureDevisATG = {
   entete: {
     titre: 'QUALIFICATIONS ATG',
     lignes: [
-      'Entreprise certifiée RGE QualiBat',
+      'ATG est certifiée Qualibat attribution 6111 Peinture et Ravalement de façade',
       'Garantie décennale',
       'Assurance professionnelle responsabilité civile',
     ],
@@ -67,6 +67,8 @@ export const STRUCTURE_DEVIS_ATG: StructureDevisATG = {
       titre: 'TRAITEMENT',
       motsCles: [
         'traitement fissures',
+        'algicide',
+        'fongicide',
         'entoilage',
         'imperméabilité',
         'toile de renfort',

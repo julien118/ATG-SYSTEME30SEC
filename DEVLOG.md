@@ -104,6 +104,31 @@ Reprise sur `main` (Phase 1 + Phase 2 mergées entre temps). 3 améliorations li
 
 ---
 
+## 2026-05-28 — Re-seed bibliothèque au style Olivier + scénario Dupont figé
+
+**Pourquoi** : la démo tourne sur le compte Costructor de Julien mais doit sortir des devis qui ressemblent à ceux d'Olivier. Son vrai style a été extrait depuis 276 de ses devis réels (voir `STYLE-OLIVIER.md`) : descriptions COURTES et concrètes (médiane 106 caractères, vraies marques Baumit / Virtuotech / Comabi, sigles normatifs courts), à l'opposé des pavés génériques d'environ 1500 caractères générés jusqu'ici.
+
+### Bibliothèque re-seedée (compte Julien)
+- Ancienne biblio générique retirée : les 21 lignes de `bibliotheque_costructor` supprimées et remplacées. Les 21 produits Costructor correspondants ne sont PAS supprimables (`DELETE /products` renvoie 400 `product_used_in_detailed_works` car ils sont référencés par d'anciens devis). Laissés en orphelins, hors bibliothèque, donc jamais proposés par la PWA.
+- 22 articles au style Olivier, intitulés VERBATIM de ses devis, prix = médiane de ses fourchettes réelles. Transversaux (déplacement, échafaudage Comabi, lavage, traitement algicide, déchets benne DIB), ravalement (I3 Virtuotech, I4 taloché, I4 entoilage, imperméabilisation I3, mur intérieur), ITE (Baumit StarSystem, PSE 140mm, soubassement), points singuliers (appuis, corniches, dessous de toit, souche, descentes, fixations).
+- Seed figé et rejouable : `supabase/migrations/003_seed_bibliotheque_atg.sql`, généré par `scripts/reseed-bibliotheque-atg.mjs` (idempotent par nom de produit).
+- `lib/costructor.ts` : `uniteVersCostructorId` gère désormais u, m³, ens (avant, tout sauf m²/ml tombait sur m²).
+- `lib/atg-devis-structure.ts` : en-tête QUALIFICATIONS reprend sa vraie ligne "ATG est certifiée Qualibat attribution 6111 Peinture et Ravalement de façade" ; mots-clés TRAITEMENT élargis (algicide, fongicide).
+
+### Prompt PWA recalibré (`lib/quote-proposer.ts`)
+- Descriptions cibles 100 à 150 caractères (avant : 350 à 900, 3 paragraphes imposés). Concret produit et norme, interdiction explicite du remplissage générique et des tournures vagues, whitelist stricte sur la bibliothèque, 3 exemples few-shot tirés du style d'Olivier.
+
+### Scénario démo Dupont figé
+- `scripts/scenario-dupont.mjs` seed un chantier "M. et Mme Dupont" (12 rue des Lilas, 37130 Cinq-Mars-la-Pile) + 3 observations vocales + un devis dont les `sections_finales` et les totaux sont FIGÉS (indépendant d'une génération IA live, donc le chiffre ne bouge pas la veille de la démo). Idempotent.
+- 3 façades : Sud (ravalement I3, 42 m²), Nord (ravalement I3, 42 m²), Pignon Est (imperméabilisation I4 entoilage, 28 m²) + moyens généraux (déplacement, échafaudage 115 m²).
+- **Total cible figé : 6 806,68 € HT / 7 487,35 € TTC** (TVA travaux 10 %), headline d'environ 6 800 € HT. Volontairement non rond, comme les vrais devis d'Olivier (9 689, 16 457,28, 19 830,04...). Ajustable via les quantités dans le script.
+
+### Deux pièges techniques API Costructor (détail)
+- **Meta-params préfixés underscore** : `_expand`, `_limit`, `_sort`, `_order` sont honorés ; sans underscore ils sont ignorés silencieusement. `_expand=lines` remonte le détail des lignes d'un devis (les anciens tests qui concluaient "devis en écriture seule" utilisaient `expand=lines` sans underscore). `/quotes` est plafonné à 10 sans `_limit` ; `metadata.items` donne le vrai total.
+- **Vue `lines` imbriquée redondante** : chaque ligne d'un devis porte un champ `lines` enfant qui duplique le contenu. Seul le niveau racine fait foi (`quote.subtotal` = somme des `subtotal` racine). Récurser dans les enfants double les montants.
+
+---
+
 ## Pièges techniques résolus (à ne pas re-vivre)
 
 1. **RLS active malgré DISABLE** → SQL purge des policies + ALTER TABLE DISABLE
@@ -117,6 +142,10 @@ Reprise sur `main` (Phase 1 + Phase 2 mergées entre temps). 3 améliorations li
 9. **Filtres `/contacts?email=`, `?phone=`, `?search=` ignorés par Costructor** → lister tout + filtrer côté Next.js
 10. **`DELETE /contacts/{id}` → 405** → impossible de nettoyer un contact via l'API externe, seule l'UI Costructor le permet
 11. **Format adresse contact Costructor** : `addresses:[{address:{street,city,postal_code,country}, primary:true}]` (pluriel + `postal_code` snake_case) — `address:{zip}` est silencieusement ignoré
+12. **Meta-params Costructor préfixés underscore** : `_expand`, `_limit`, `_sort`, `_order` honorés ; sans underscore ignorés. `_expand=lines` donne le détail des lignes d'un devis. `/quotes` plafonné à 10 sans `_limit` ; `metadata.items` donne le vrai total.
+13. **Vue `lines` imbriquée redondante dans un devis** : seul le niveau racine fait foi (`quote.subtotal` = somme des `subtotal` racine). Récurser dans les enfants double les totaux.
+14. **`DELETE /products` refusé si le produit est utilisé** (`400 product_used_in_detailed_works`) : un article déjà référencé par un devis ne peut pas être nettoyé via l'API, le laisser orphelin (hors bibliothèque).
+15. **`POST /products` rejette le champ `type`** (`type doit être un des choix proposés`) : ne pas l'envoyer, le produit est créé en `type:"supply"` par défaut. Champs utiles : `name`, `unit` (id), `sellPrice` (centimes).
 
 ---
 
