@@ -29,18 +29,26 @@ const API_KEY = process.env.COSTRUCTOR_API_KEY
 
 // ---------- Constantes critiques (IDs Costructor compte démo Olivier) ----------
 // Validés visuellement par l'audit.
-export const UNIT_M2 = 'unit_01fvj2wadbh7qc1784z1es0nke'
-export const UNIT_ML = 'unit_01fvj2wafhw41w7hpaeb3ywfg5'
-export const UNIT_FORFAIT = 'unit_01fvj2wadbh7qc1784z1es0nke' // pas d'unité forfait → fallback m²
+// IDs d'unités Costructor (globaux, valides sur tout compte — vérifiés via GET /units).
+export const UNIT_M2 = 'unit_01fvj2wadbh7qc1784z1es0nke' // m²
+export const UNIT_ML = 'unit_01fvj2wafhw41w7hpaeb3ywfg5' // ml
+export const UNIT_U = 'unit_01fvj2wa9fgmx3th3na873ccws' // u (à la pièce)
+export const UNIT_M3 = 'unit_01fvj2wahmvbmnf8y0czmqjjep' // m³
+export const UNIT_ENS = 'unit_01fvj2waghdkq11qjba76hk2dt' // ens (ensemble)
+export const UNIT_FORFAIT = UNIT_U // un forfait se compte à l'unité (style Olivier)
 
 // TVA 10% travaux.
 export const TAX_TVA_10 = 'tx_01kgkxxt0paj8rpp7va415yxyy'
 
-// Mapping unité affichée → ID Costructor.
+// Mapping unité affichée → ID Costructor. Olivier utilise m², ml, u, m³, ens.
 export function uniteVersCostructorId(unite: string): string {
   const u = unite.toLowerCase().trim()
   if (u === 'm²' || u === 'm2') return UNIT_M2
   if (u === 'ml') return UNIT_ML
+  if (u === 'm³' || u === 'm3') return UNIT_M3
+  if (u === 'u' || u === 'unité' || u === 'unite' || u === 'pièce' || u === 'piece')
+    return UNIT_U
+  if (u === 'ens' || u === 'ensemble' || u === 'forfait') return UNIT_ENS
   return UNIT_FORFAIT
 }
 
