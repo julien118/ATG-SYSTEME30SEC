@@ -2,11 +2,17 @@
 // Routing par typologie (Phase D)
 // =============================================================
 // À partir d'une dictée transcrite, détecte la typologie de chantier et
-// sélectionne le devis-modèle correspondant parmi ceux du compte test.
+// sélectionne le devis-modèle correspondant parmi les 5 modèles utiles du
+// compte test.
 //
 // Acquis Phase A : il n'y a PAS de bibliothèque/catégorie en API. La structure
 // d'Olivier est portée par ses devis-modèles (`model:true`). On ne cherche donc
-// PAS dans les 2276 produits : on route vers le bon modèle, puis on le clone.
+// PAS dans les milliers de produits : on route vers le bon modèle, puis on le
+// clone.
+//
+// PRIORITÉ DE SÉCURITÉ : on tranche d'abord la FAMILLE (ravalement vs ITE) de
+// façon franche, AVANT d'affiner la variante. Une dictée de ravalement ne doit
+// JAMAIS tomber sur un modèle ITE, et inversement.
 //
 // Règle : jamais de devinette silencieuse. La fonction renvoie toujours un
 // niveau de confiance, la raison du choix, et les alternatives plausibles.
@@ -21,10 +27,12 @@ export interface ModeleDevis {
 }
 
 export type NiveauConfiance = 'haute' | 'moyenne' | 'basse' | 'aucune'
+export type Famille = 'ravalement' | 'ite' | 'inconnue'
 
 export interface ResultatRoutage {
+  famille: Famille
   typologie: string // clé interne (ex: 'ravalement_i3_peinture')
-  libelle: string // libellé lisible
+  libelle: string
   modeleId: string | null
   modeleDescription: string | null
   confiance: NiveauConfiance
@@ -32,62 +40,87 @@ export interface ResultatRoutage {
   alternatives: Array<{ typologie: string; libelle: string; score: number }>
 }
 
-// Définition des typologies routables. Pour chaque typologie :
-//   - motsCles : signaux dans la dictée (regex sur texte normalisé), pondérés.
-//   - descModele : regex qui identifie le modèle correspondant via sa description.
 interface DefinitionTypologie {
   cle: string
   libelle: string
+  famille: Exclude<Famille, 'inconnue'>
+  // Signaux dans la dictée qui distinguent cette variante DANS sa famille.
   motsCles: Array<{ re: RegExp; poids: number }>
-  descModele: RegExp
+  // Prédicat sur la description (HTML strippé + normalisée) du modèle.
+  matchModele: (descNorm: string) => boolean
 }
+
+// --- Détection de FAMILLE (1er niveau, franc) ---
+// Mots-clés ITE forts : tout ce qui évoque l'isolation par l'extérieur.
+const MOTS_ITE: Array<{ re: RegExp; poids: number }> = [
+  { re: /\bite\b/, poids: 3 },
+  { re: /isolation thermique|isolation par l.?ext|isoler? par l.?ext|isolation exterieure/, poids: 3 },
+  { re: /\bisolant\b|polystyr|\bpse\b|starsystem|star system|baumit|knauf|weber|protherm|acermi/, poids: 2 },
+  { re: /\br ?= ?\d|epaisseur.*\d+ ?mm|\d+ ?mm.*(isol|pse|panneau)/, poids: 1 },
+]
+// Mots-clés RAVALEMENT forts : finition de façade sans isolation.
+const MOTS_RAVALEMENT: Array<{ re: RegExp; poids: number }> = [
+  { re: /ravalement/, poids: 3 },
+  { re: /\bi3\b|\bi4\b/, poids: 2 },
+  { re: /peinture|virtuotech|taloch/, poids: 2 },
+  { re: /fissures|enduit|farin|imperm/, poids: 1 },
+]
 
 const TYPOLOGIES: DefinitionTypologie[] = [
   {
     cle: 'ravalement_i3_peinture',
     libelle: 'Ravalement I3 peinture',
+    famille: 'ravalement',
     motsCles: [
       { re: /\bi3\b/, poids: 2 },
       { re: /peinture|virtuotech/, poids: 2 },
-      { re: /ravalement/, poids: 1 },
     ],
-    descModele: /i3\s*peinture/i,
+    matchModele: (d) => /i3\s*peinture/.test(d),
   },
   {
     cle: 'ravalement_i3_taloche',
     libelle: 'Ravalement I3 taloché',
+    famille: 'ravalement',
     motsCles: [
       { re: /\bi3\b/, poids: 2 },
       { re: /taloch/, poids: 2 },
-      { re: /ravalement/, poids: 1 },
     ],
-    descModele: /i3\s*taloch/i,
+    matchModele: (d) => /i3\s*taloch/.test(d),
   },
   {
     cle: 'ravalement_i4_taloche',
     libelle: 'Ravalement I4 taloché',
+    famille: 'ravalement',
     motsCles: [
-      { re: /\bi4\b/, poids: 2 },
+      { re: /\bi4\b/, poids: 3 },
       { re: /taloch|entoilage/, poids: 1 },
-      { re: /ravalement/, poids: 1 },
     ],
-    descModele: /i4\s*taloch/i,
+    matchModele: (d) => /i4\s*taloch/.test(d),
   },
   {
-    cle: 'ite',
-    libelle: 'ITE (isolation thermique par l\'extérieur)',
+    cle: 'ite_detaille',
+    libelle: 'ITE détaillée (volets, reports, partie chauffée — garantie décennale)',
+    famille: 'ite',
     motsCles: [
-      { re: /\bite\b/, poids: 3 },
-      { re: /isolation thermique|isolation par l.?ext/, poids: 2 },
-      { re: /polystyr|\bpse\b|baumit|starsystem|knauf|weber/, poids: 1 },
+      { re: /volet|equerre|gond|couvertine/, poids: 2 },
+      { re: /report|eclairage|robinet|partie chauffee|partie non chauffee/, poids: 2 },
+      { re: /garantie decennale|tableaux isoles/, poids: 1 },
     ],
-    descModele: /isolation thermique|\bite\b/i,
+    matchModele: (d) => /garantie decennale|travaux d.isolation thermique/.test(d),
+  },
+  {
+    cle: 'ite_standard',
+    libelle: 'ITE standard (StarSystem)',
+    famille: 'ite',
+    motsCles: [{ re: /isolation thermique|\bite\b|starsystem/, poids: 1 }],
+    matchModele: (d) =>
+      /isolation thermique/.test(d) && !/garantie decennale/.test(d),
   },
 ]
 
-// Normalisation : minuscules + retrait des diacritiques.
 function normaliser(s: string): string {
   return (s ?? '')
+    .replace(/<[^>]+>/g, ' ')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -95,33 +128,46 @@ function normaliser(s: string): string {
     .trim()
 }
 
-// Score chaque typologie sur la dictée (somme des poids des mots-clés présents).
-export function scorerTypologies(
-  dictee: string,
-): Array<{ typologie: string; libelle: string; score: number }> {
-  const texte = normaliser(dictee)
-  return TYPOLOGIES.map((t) => {
-    let score = 0
-    for (const { re, poids } of t.motsCles) {
-      if (re.test(texte)) score += poids
-    }
-    return { typologie: t.cle, libelle: t.libelle, score }
-  }).sort((a, b) => b.score - a.score)
+function scoreFamille(
+  texte: string,
+  mots: Array<{ re: RegExp; poids: number }>,
+): number {
+  return mots.reduce((s, { re, poids }) => s + (re.test(texte) ? poids : 0), 0)
 }
 
-// Sélectionne le modèle correspondant à la typologie détectée.
-// Écarte les modèles inexploitables : artefact de test, modèles vides (total 0
-// ou pas de description). Si plusieurs modèles matchent la même typologie (cas
-// des deux modèles ITE), on les remonte en alternatives et on baisse la confiance.
+export interface ScoreVariante {
+  typologie: string
+  libelle: string
+  score: number
+}
+
+// Score les variantes d'une famille donnée.
+export function scorerVariantes(dictee: string, famille: Famille): ScoreVariante[] {
+  const texte = normaliser(dictee)
+  return TYPOLOGIES.filter((t) => t.famille === famille)
+    .map((t) => ({
+      typologie: t.cle,
+      libelle: t.libelle,
+      score: t.motsCles.reduce(
+        (s, { re, poids }) => s + (re.test(texte) ? poids : 0),
+        0,
+      ),
+    }))
+    .sort((a, b) => b.score - a.score)
+}
+
+// Sélectionne le modèle correspondant à la dictée.
 export function selectionnerModele(
   dictee: string,
   modeles: ModeleDevis[],
 ): ResultatRoutage {
-  const scores = scorerTypologies(dictee)
-  const meilleur = scores[0]
-  const second = scores[1]
+  const texte = normaliser(dictee)
 
-  // Modèles exploitables seulement.
+  // --- 1er niveau : FAMILLE (franc) ---
+  const scoreIte = scoreFamille(texte, MOTS_ITE)
+  const scoreRav = scoreFamille(texte, MOTS_RAVALEMENT)
+
+  // Modèles exploitables : modèle vrai, décrit, non artefact, total > 0.
   const modelesUtiles = modeles.filter(
     (m) =>
       m.model &&
@@ -130,63 +176,75 @@ export function selectionnerModele(
       (m.total ?? 0) > 0,
   )
 
-  const alternatives = scores
-    .filter((s) => s.score > 0 && s.typologie !== meilleur.typologie)
-    .map((s) => ({ typologie: s.typologie, libelle: s.libelle, score: s.score }))
-
-  // Aucun signal : on ne devine pas.
-  if (!meilleur || meilleur.score === 0) {
+  if (scoreIte === 0 && scoreRav === 0) {
     return {
+      famille: 'inconnue',
       typologie: 'inconnue',
       libelle: 'Typologie non détectée',
       modeleId: null,
       modeleDescription: null,
       confiance: 'aucune',
       raison:
-        'Aucun mot-clé de typologie (I3, I4, peinture, taloché, ITE...) trouvé dans la dictée. Routage manuel requis.',
-      alternatives,
+        'Aucun mot-clé de famille (ravalement / peinture / taloché / ITE / isolation...) trouvé. Routage manuel requis.',
+      alternatives: [],
     }
   }
 
-  const def = TYPOLOGIES.find((t) => t.cle === meilleur.typologie)!
+  const famille: Famille = scoreIte > scoreRav ? 'ite' : 'ravalement'
+  const margeFamille = Math.abs(scoreIte - scoreRav)
+
+  // --- 2e niveau : VARIANTE dans la famille ---
+  const variantes = scorerVariantes(dictee, famille)
+  const meilleure = variantes[0]
+  const seconde = variantes[1]
+  const def = TYPOLOGIES.find((t) => t.cle === meilleure.typologie)!
+
   const candidats = modelesUtiles.filter((m) =>
-    def.descModele.test(m.description ?? ''),
+    def.matchModele(normaliser(m.description ?? '')),
   )
+
+  const alternatives = variantes
+    .filter((v) => v.typologie !== meilleure.typologie && v.score > 0)
+    .map((v) => ({ typologie: v.typologie, libelle: v.libelle, score: v.score }))
 
   if (candidats.length === 0) {
     return {
-      typologie: meilleur.typologie,
-      libelle: meilleur.libelle,
+      famille,
+      typologie: meilleure.typologie,
+      libelle: meilleure.libelle,
       modeleId: null,
       modeleDescription: null,
       confiance: 'aucune',
-      raison: `Typologie « ${meilleur.libelle} » détectée mais aucun modèle correspondant sur le compte test (regex ${def.descModele}).`,
+      raison: `Famille « ${famille} » (ITE=${scoreIte} / ravalement=${scoreRav}) mais aucun modèle « ${meilleure.libelle} » sur le compte test.`,
       alternatives,
     }
   }
 
-  // Confiance : haute si un seul modèle candidat ET marge nette sur le 2e score.
-  const marge = meilleur.score - (second?.score ?? 0)
+  // Confiance : la séparation de famille prime. Marge famille forte + variante
+  // nette + 1 seul modèle candidat = haute.
+  const margeVariante = meilleure.score - (seconde?.score ?? 0)
   let confiance: NiveauConfiance
-  if (candidats.length === 1 && marge >= 2) confiance = 'haute'
-  else if (candidats.length === 1 && marge >= 1) confiance = 'moyenne'
+  if (margeFamille >= 3 && margeVariante >= 2 && candidats.length === 1)
+    confiance = 'haute'
+  else if (margeFamille >= 2 && candidats.length === 1) confiance = 'moyenne'
   else confiance = 'basse'
 
   const choisi = candidats[0]
-  const ambiguiteModele =
+  const ambig =
     candidats.length > 1
-      ? ` Attention : ${candidats.length} modèles matchent cette typologie (${candidats
-          .map((c) => `"${c.description?.trim()}"`)
-          .join(', ')}) — le premier est retenu, à valider.`
+      ? ` ⚠️ ${candidats.length} modèles matchent (${candidats
+          .map((c) => `"${normaliser(c.description ?? '')}"`)
+          .join(', ')}) — premier retenu, à valider.`
       : ''
 
   return {
-    typologie: meilleur.typologie,
-    libelle: meilleur.libelle,
+    famille,
+    typologie: meilleure.typologie,
+    libelle: meilleure.libelle,
     modeleId: choisi.id,
-    modeleDescription: (choisi.description ?? '').trim(),
+    modeleDescription: (choisi.description ?? '').replace(/<[^>]+>/g, '').trim(),
     confiance,
-    raison: `Score ${meilleur.score} (marge ${marge} sur « ${second?.libelle ?? '—'} » à ${second?.score ?? 0}).${ambiguiteModele}`,
+    raison: `Famille ${famille} (ITE=${scoreIte}/rav=${scoreRav}, marge ${margeFamille}) ; variante « ${meilleure.libelle} » score ${meilleure.score} (marge ${margeVariante} sur « ${seconde?.libelle ?? '—'} »).${ambig}`,
     alternatives,
   }
 }
