@@ -74,9 +74,20 @@ export type LignePayload =
 
 export interface MetresFacade {
   nom: string
-  surface_m2?: number | null
+  surface_m2?: number | null // mur principal : ravalement OU système ITE + isolant
   dessous_toit_ml?: number | null
   appuis_ml?: number | null
+  tableaux_ml?: number | null // tableaux de fenêtres isolés (ITE)
+  soubassement_m2?: number | null
+  menuiserie_m2?: number | null // contours/menuiseries métal peints
+  couvertine_ml?: number | null
+  nb_volets?: number | null // jeux de volets (équerre/gond/arrêt/butée)
+  // Reports : chaque type est un poste DISTINCT avec sa propre quantité.
+  nb_report_eclairage?: number | null
+  nb_report_robinet?: number | null
+  nb_report?: number | null // report générique (EDF/ENEDIS/électrique)
+  nb_descente_ep?: number | null // modifs / descentes EP
+  nb_fixation?: number | null // fixations descente EP, arrêts de volet
 }
 
 export interface MetresTransversal {
@@ -166,22 +177,76 @@ export type RoleProduit =
   | 'echafaudage'
   | 'lavage'
   | 'traitement'
+  | 'deplacement'
+  | 'dechets'
+  | 'eco'
+  | 'ravalement' // finition de mur au m² (I3/I4 peinture ou taloché)
+  | 'ite_systeme' // système d'isolation extérieure au m²
+  | 'isolant_pse' // panneau isolant PSE au m²
+  | 'soubassement'
+  | 'menuiserie' // contours/menuiseries métal (m²)
   | 'dessous_toit'
   | 'appuis'
-  | 'ravalement'
-  | 'eco'
+  | 'tableaux'
+  | 'couvertine'
+  | 'volet'
+  | 'report_eclairage'
+  | 'report_robinet'
+  | 'report' // report générique (EDF/ENEDIS/électrique)
+  | 'descente_ep'
+  | 'fixation'
   | 'autre'
 
+// Détermine le rôle d'un produit d'après sa description. L'ORDRE compte :
+// on teste les libellés les plus spécifiques d'abord.
 export function roleProduit(description: string | null | undefined): RoleProduit {
   const d = normaliser(description)
+  // Transversaux / forfaits
   if (/echafaudage|comabi|amene du materiel/.test(d)) return 'echafaudage'
   if (/lavage/.test(d)) return 'lavage'
   if (/algicide|fongicide/.test(d)) return 'traitement'
-  if (/dessous de toit/.test(d)) return 'dessous_toit'
-  if (/appuis/.test(d)) return 'appuis'
-  if (/ravalement i3 peinture|i3 peinture|virtuotech/.test(d)) return 'ravalement'
+  if (/deplacement|installation du chantier/.test(d)) return 'deplacement'
+  if (/gestion des dechets|benne dib/.test(d)) return 'dechets'
   if (/eco-?contribution/.test(d)) return 'eco'
+  // Points de façade
+  if (/dessous de toit/.test(d)) return 'dessous_toit'
+  if (/tableaux de fenetres/.test(d)) return 'tableaux'
+  if (/appuis de fenetres|appuis/.test(d)) return 'appuis'
+  if (/soubassement/.test(d)) return 'soubassement'
+  if (/couvertine/.test(d)) return 'couvertine'
+  if (/equerre|gond de volet|arret de volet|butee de volet/.test(d)) return 'volet'
+  // Reports : chaque type a son rôle propre (poste distinct, qté propre).
+  if (/report.*eclairage|eclairage.*report|report 1 eclairage/.test(d)) return 'report_eclairage'
+  if (/report.*robinet|robinet.*report|report 1 robinet/.test(d)) return 'report_robinet'
+  if (/report.*(edf|enedis|electrique)/.test(d)) return 'report'
+  if (/descente ep|descente d.?eau pluviale|modification descente/.test(d)) return 'descente_ep'
+  if (/fixation pour descente|cylindre de fixation/.test(d)) return 'fixation'
+  if (/menuiseries exterieure|contours de fenetres/.test(d)) return 'menuiserie'
+  // Murs au m²
+  if (/isolation thermique exterieur|starsystem|star system/.test(d)) return 'ite_systeme'
+  if (/\bpse\b|protherm|cellomur|knauf therm|polystyrene/.test(d)) return 'isolant_pse'
+  if (/ravalement i\d|finition taloch|i3 peinture|virtuotech|vigne vierge/.test(d)) return 'ravalement'
   return 'autre'
+}
+
+// Mesure de façade pilotant la quantité d'un rôle (null = on garde la qté
+// modèle ; rôle absent de la table en contexte façade = ligne abandonnée).
+const MESURE_FACADE: Partial<Record<RoleProduit, keyof MetresFacade>> = {
+  ravalement: 'surface_m2',
+  ite_systeme: 'surface_m2',
+  isolant_pse: 'surface_m2',
+  soubassement: 'soubassement_m2',
+  menuiserie: 'menuiserie_m2',
+  dessous_toit: 'dessous_toit_ml',
+  appuis: 'appuis_ml',
+  tableaux: 'tableaux_ml',
+  couvertine: 'couvertine_ml',
+  volet: 'nb_volets',
+  report_eclairage: 'nb_report_eclairage',
+  report_robinet: 'nb_report_robinet',
+  report: 'nb_report',
+  descente_ep: 'nb_descente_ep',
+  fixation: 'nb_fixation',
 }
 
 // ---------- Extraction des métrés depuis la dictée (Claude) ----------
@@ -189,7 +254,7 @@ export function roleProduit(description: string | null | undefined): RoleProduit
 const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 
 function buildPromptMetres(dictee: string): string {
-  return `Tu extrais les MÉTRÉS d'une dictée de chantier de ravalement, dictée par le pro sur le terrain. Tu ne rédiges rien, tu ne devines aucune quantité non dite : tu structures uniquement ce qui est énoncé.
+  return `Tu extrais les MÉTRÉS d'une dictée de chantier de façade (ravalement OU isolation thermique par l'extérieur), dictée par le pro sur le terrain. Tu ne rédiges rien, tu ne devines aucune quantité non dite : tu structures uniquement ce qui est énoncé.
 
 DICTÉE :
 ---
@@ -199,19 +264,35 @@ ${dictee}
 Réponds STRICTEMENT en JSON valide (sans markdown, sans texte autour), schéma exact :
 {
   "facades": [
-    { "nom": "<nom de la façade tel que dicté, ex: Façade Sud, Pignon Est>", "surface_m2": <nombre ou null>, "dessous_toit_ml": <nombre ou null>, "appuis_ml": <nombre ou null> }
+    {
+      "nom": "<nom de la façade tel que dicté, ex: Façade Sud, Pignon Est, Façade principale>",
+      "surface_m2": <surface du mur principal à traiter/isoler, ou null>,
+      "dessous_toit_ml": <ml ou null>,
+      "appuis_ml": <ml d'appuis de fenêtres ou null>,
+      "tableaux_ml": <ml de tableaux de fenêtres isolés (ITE) ou null>,
+      "soubassement_m2": <m² de soubassement ou null>,
+      "menuiserie_m2": <m² de menuiseries/contours métal peints ou null>,
+      "couvertine_ml": <ml de couvertine ou null>,
+      "nb_volets": <nombre de jeux de volets battants ou null>,
+      "nb_report_eclairage": <nombre de reports d'éclairage ou null>,
+      "nb_report_robinet": <nombre de reports de robinet ou null>,
+      "nb_descente_ep": <nombre de descentes EP à modifier ou null>,
+      "nb_fixation": <nombre de fixations (arrêts volet, descente EP) ou null>
+    }
   ],
   "transversal": { "echafaudage_m2": <nombre ou null>, "lavage_m2": <nombre ou null>, "traitement_m2": <nombre ou null> },
   "points_singuliers": [
-    { "type": "souche|corniche|descente_ep|tableaux|chevron|portail|fixation|autre", "libelle": "<ce qui est dit>", "quantite": <nombre>, "unite": "m²|ml|u|m³" }
+    { "type": "souche|corniche|chevron|portail|autre", "libelle": "<ce qui est dit>", "quantite": <nombre>, "unite": "m²|ml|u|m³" }
   ]
 }
 
 RÈGLES :
-- Une entrée "facades" par façade nommée. Si une mesure (surface, dessous de toit, appuis) n'est pas dictée pour cette façade, mets null. N'invente aucun chiffre.
-- "transversal" : ne remplis échafaudage/lavage/traitement QUE si un total global est dicté ; sinon null (un total sera calculé en aval comme la somme des surfaces de façade).
-- "points_singuliers" : seulement les postes ponctuels explicitement dictés (souche de cheminée, corniche, descente d'eau pluviale, tableaux/voussures, tête de chevron, portail, fixations...). Choisis le "type" le plus proche, sinon "autre". Reporte la quantité et l'unité dictées.
-- Aucune façade ou point non mentionné ne doit apparaître.`
+- Une entrée "facades" par façade nommée. Toute mesure non dictée pour une façade = null. N'invente aucun chiffre.
+- "surface_m2" = la surface du mur (ravalement ou ITE). En ITE, l'isolant et le système couvrent cette même surface.
+- CHAQUE poste a SA PROPRE quantité, même si plusieurs sont cités dans la même phrase. N'utilise jamais un compteur global appliqué à plusieurs postes. Exemple : « un report d'éclairage et un report de robinet » => nb_report_eclairage:1 ET nb_report_robinet:1 (surtout PAS 2 partout). « deux volets et une descente EP » => nb_volets:2 ET nb_descente_ep:1. Lis la portion de phrase propre à chaque poste.
+- "transversal" : remplis échafaudage/lavage/traitement UNIQUEMENT si un total global est dicté ; sinon null (un total = somme des surfaces de façade sera calculé en aval).
+- "points_singuliers" : RÉSERVÉ aux postes ponctuels qui ne sont PAS déjà des mesures de façade ci-dessus (souche de cheminée, corniche, tête de chevron, portail...). NE mets PAS ici les appuis, tableaux, dessous de toit, soubassement, volets (ils vont dans la façade), NI l'échafaudage, le lavage, le traitement, les déchets/benne, le déplacement (postes transversaux gérés ailleurs). Choisis le "type" le plus proche, sinon "autre".
+- Aucune façade ou poste non mentionné ne doit apparaître.`
 }
 
 export async function extraireMetres(dictee: string): Promise<MetresDevis> {
@@ -251,16 +332,21 @@ const ordonner = (lignes: LigneModele[] | undefined): LigneModele[] =>
 
 // Assemble les enfants d'un groupe en appliquant un résolveur de quantité.
 // Une ligne produit dont la quantité résolue est nulle/≤0 est ABANDONNÉE, et
-// le titre texte qui la précède immédiatement l'est aussi (pas de titre orphelin).
+// le titre texte qui la précède immédiatement l'est aussi (pas de titre
+// orphelin). Le titre courant (dernier texte vu) est passé au résolveur : il
+// porte le contexte que le produit seul ne donne pas (ex : « partie non
+// chauffée » en ITE, où le libellé produit est identique à la partie chauffée).
 function assemblerEnfants(
   enfants: LigneModele[],
-  resoudreQuantite: (l: LigneModele) => number | null,
+  resoudreQuantite: (l: LigneModele, titreCourant: string) => number | null,
 ): LignePayload[] {
   const out: LignePayload[] = []
   let textesEnAttente: LignePayload[] = []
+  let titreCourant = ''
   for (const l of ordonner(enfants)) {
     if (l.type === 'text') {
       textesEnAttente.push({ type: 'text', description: l.description ?? '' })
+      titreCourant = l.description ?? ''
     } else if (l.type === 'group') {
       out.push(...textesEnAttente)
       textesEnAttente = []
@@ -270,7 +356,7 @@ function assemblerEnfants(
         lines: assemblerEnfants(l.lines ?? [], resoudreQuantite),
       })
     } else if (l.type === 'product') {
-      const q = resoudreQuantite(l)
+      const q = resoudreQuantite(l, titreCourant)
       if (q != null && q > 0 && l.product?.id) {
         out.push(...textesEnAttente)
         out.push({
@@ -302,7 +388,8 @@ function classifierGroupe(
     }
   }
   collecter(g.lines)
-  if (roles.includes('ravalement')) return 'facade'
+  // Façade = groupe portant un mur au m² (ravalement OU système ITE).
+  if (roles.includes('ravalement') || roles.includes('ite_systeme')) return 'facade'
   if (roles.includes('eco') || /eco-?contribution/i.test(g.description ?? ''))
     return 'eco'
   if (roles.some((r) => ['echafaudage', 'lavage', 'traitement'].includes(r)))
@@ -324,18 +411,36 @@ function quantiteTransversale(l: LigneModele, m: MetresTransversal): number | nu
   }
 }
 
-// Résolveur de quantité pour une façade donnée.
-function quantiteFacade(l: LigneModele, f: MetresFacade): number | null {
-  switch (roleProduit(l.description)) {
-    case 'ravalement':
-      return f.surface_m2 ?? null
-    case 'dessous_toit':
-      return f.dessous_toit_ml ?? null
-    case 'appuis':
-      return f.appuis_ml ?? null
-    default:
-      return l.quantity ?? 1
-  }
+// Résolveur de quantité pour une façade donnée. Le rôle du produit pointe vers
+// une mesure de façade (table MESURE_FACADE). Si la mesure n'est pas dictée, la
+// ligne est ABANDONNÉE (et son titre, cf. assemblerEnfants) : on n'invente pas
+// de quantité et on ne garde pas de ligne à 1 dans une façade.
+function quantiteFacade(
+  l: LigneModele,
+  f: MetresFacade,
+  titreCourant: string,
+): number | null {
+  const role = roleProduit(l.description)
+  // Forfaits éventuellement présents dans une façade : on garde la qté modèle.
+  if (role === 'deplacement' || role === 'dechets' || role === 'eco')
+    return l.quantity ?? 1
+  // ITE : la partie « non chauffée » duplique le système au m² (même libellé
+  // produit que la partie chauffée). La surface dictée = partie chauffée ; on
+  // abandonne la partie non chauffée pour ne pas doubler la surface isolée.
+  if (
+    (role === 'ite_systeme' || role === 'isolant_pse') &&
+    /non chauffee/.test(
+      titreCourant
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, ''),
+    )
+  )
+    return null
+  const cle = MESURE_FACADE[role]
+  if (!cle) return null // rôle non piloté (accessoire : rail, profil...) → abandon
+  const v = f[cle]
+  return typeof v === 'number' ? v : null
 }
 
 // Cherche dans la liste plate le produit correspondant à un point singulier.
@@ -349,6 +454,21 @@ const MOTS_CLES_POINT: Record<string, string[]> = {
   fixation: ['fixation'],
 }
 
+// Rôles qui ne sont JAMAIS des points singuliers : ils sont déjà portés par le
+// bloc transversal, les forfaits ou les groupes dédiés du modèle. Empêche un
+// « benne pour les déchets » dicté de se dédoubler avec le groupe Déchets.
+const ROLES_EXCLUS_POINT = new Set<RoleProduit>([
+  'echafaudage',
+  'lavage',
+  'traitement',
+  'dechets',
+  'eco',
+  'deplacement',
+  'ravalement',
+  'ite_systeme',
+  'isolant_pse',
+])
+
 export function chercherProduitPoint(
   produits: ProduitPlat[],
   point: PointSingulier,
@@ -361,6 +481,7 @@ export function chercherProduitPoint(
   if (motsCles.length === 0) return null
   let meilleur: { p: ProduitPlat; score: number } | null = null
   for (const p of produits) {
+    if (ROLES_EXCLUS_POINT.has(roleProduit(p.name))) continue // pas un point singulier
     const nom = normaliser(p.name)
     const score = motsCles.filter((m) => nom.includes(normaliser(m))).length
     if (score > 0 && (!meilleur || score > meilleur.score)) {
@@ -456,7 +577,9 @@ export function construirePayloadDepuisModele(
           out.push({
             type: 'group',
             description: f.nom,
-            lines: assemblerEnfants(ligne.lines ?? [], (l) => quantiteFacade(l, f)),
+            lines: assemblerEnfants(ligne.lines ?? [], (l, titre) =>
+              quantiteFacade(l, f, titre),
+            ),
           })
         }
         // Points singuliers juste après les façades.
@@ -496,7 +619,10 @@ export function construirePayloadDepuisModele(
 export function sommeProduits(lines: LignePayload[]): number {
   let total = 0
   for (const l of lines) {
-    if (l.type === 'product') total += l.quantity * l.sellPrice
+    // Costructor arrondit le sous-total de CHAQUE ligne au centime entier
+    // (qté fractionnaire possible, ex : 0,3 m³ de benne). On reproduit cet
+    // arrondi par ligne pour que le total attendu colle au subtotal renvoyé.
+    if (l.type === 'product') total += Math.round(l.quantity * l.sellPrice)
     else if (l.type === 'group') total += sommeProduits(l.lines)
   }
   return total
