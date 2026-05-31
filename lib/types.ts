@@ -187,6 +187,18 @@ export interface CostructorContactPhone {
   primary: boolean
 }
 
+// Adresse Costructor : objet imbriqué + drapeau primary. Forme confirmée par GET
+// /contacts : addresses:[{ address:{ street, city, postal_code, country }, primary }].
+export interface CostructorContactAddress {
+  address: {
+    street?: string | null
+    city?: string | null
+    postal_code?: string | null
+    country?: string | null
+  } | null
+  primary?: boolean
+}
+
 export interface CostructorContact {
   id: string
   type: string // 'client' | 'lead' | ...
@@ -197,6 +209,7 @@ export interface CostructorContact {
   fullName: string | null
   emails: CostructorContactEmail[]
   phones: CostructorContactPhone[]
+  addresses: CostructorContactAddress[]
   // Mirroir du primary, présent dans la réponse mais redondant à l'envoi.
   email: string | null
   phone: string | null

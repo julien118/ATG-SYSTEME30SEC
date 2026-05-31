@@ -14,6 +14,7 @@ import {
   STRUCTURE_DEVIS_ATG,
   trouverSectionTransversale,
 } from './atg-devis-structure'
+import { assertCompteJulien, bannerCompte } from './costructor-compte'
 import type {
   CostructorContact,
   CostructorProduct,
@@ -105,8 +106,13 @@ export async function listerProduits(): Promise<CostructorProduct[]> {
 // ?search, ?q sur /contacts (testé 2026-05-21). On liste donc tout et on filtre
 // en mémoire. À revoir si la base d'Olivier dépasse quelques centaines de
 // contacts : il faudra paginer et/ou stocker un index côté Supabase.
+//
+// PIÈGE #12 : les méta-params Costructor doivent être préfixés `_` sinon ils
+// sont ignorés. `?limit=1000` (sans underscore) était silencieusement plafonné à
+// 10 → la dédup ne voyait que 10 contacts sur ~300. `?_limit=1000` débloque la
+// liste complète.
 export async function listerContacts(): Promise<CostructorContact[]> {
-  return costructorFetch<CostructorContact[]>('/contacts?limit=1000')
+  return costructorFetch<CostructorContact[]>('/contacts?_limit=1000')
 }
 
 // Normalisations pour le matching.
@@ -144,6 +150,26 @@ export function parseAdresseFr(adresse: string | null | undefined): {
   return { street: a, city: '', zip: '' }
 }
 
+// T2 : assainit un téléphone AVANT envoi à Costructor. L'API rejette les
+// numéros avec espaces/séparateurs ("06 12 34 56 78" → 400 phone_number.invalid).
+// On ne garde que les chiffres en PRÉSERVANT le 0 de tête (≠ normaliserTelephone
+// qui tronque aux 9 derniers chiffres, pour le seul besoin de comparaison).
+function assainirTelephonePourEnvoi(s: string | null | undefined): string {
+  return (s ?? '').replace(/\D/g, '')
+}
+
+// T4 : ville + code postal de l'adresse primaire d'un contact (ou la 1re), pour
+// servir de second critère de concordance lors du matching par nom.
+function villeCpContact(c: CostructorContact): { ville: string; cp: string } {
+  const addrs = c.addresses ?? []
+  const principale = addrs.find((a) => a.primary) ?? addrs[0]
+  const ad = principale?.address ?? null
+  return {
+    ville: normaliserNom(ad?.city),
+    cp: (ad?.postal_code ?? '').replace(/\D/g, ''),
+  }
+}
+
 export interface RechercheContactInput {
   client_nom: string
   client_email?: string | null
@@ -152,9 +178,13 @@ export interface RechercheContactInput {
 }
 
 // Cherche un contact existant par email > téléphone > nom, sinon le crée.
-// Le matching par nom est volontairement strict (égalité exacte après
-// normalisation) car notre champ `client_nom` est en saisie libre — un fuzzy
-// match créerait plus de faux positifs qu'il n'éviterait de doublons.
+// Signaux FORTS (fusion automatique) : email exact, téléphone normalisé.
+// Signal FAIBLE : le nom. Le champ `client_nom` est en saisie libre et des
+// homonymes existent ("M. et Mme Dupont"), donc (T4) la fusion par nom n'est
+// autorisée QUE si un second critère concorde aussi (ville OU code postal). Si
+// seul le nom correspond, on NE fusionne PAS : on crée un nouveau contact. Un
+// doublon évitable vaut mieux qu'une fusion de deux personnes distinctes
+// (d'autant que DELETE /contacts = 405, donc une mauvaise fusion est durable).
 export async function trouverOuCreerContact(
   input: RechercheContactInput,
 ): Promise<ResultatRechercheContact> {
@@ -163,6 +193,9 @@ export async function trouverOuCreerContact(
   const emailNorm = normaliserEmail(input.client_email)
   const phoneNorm = normaliserTelephone(input.client_telephone)
   const nomNorm = normaliserNom(input.client_nom)
+  const { street, city, zip } = parseAdresseFr(input.client_adresse)
+  const villeNorm = normaliserNom(city)
+  const cpNorm = (zip ?? '').replace(/\D/g, '')
 
   // 1) Email exact (signal fort)
   if (emailNorm) {
@@ -186,8 +219,11 @@ export async function trouverOuCreerContact(
     if (match) return { contactId: match.id, cree: false, matchType: 'phone' }
   }
 
-  // 3) Nom exact après normalisation (signal faible — fragile)
-  if (nomNorm) {
+  // 3) Nom exact + second critère concordant (T4 : signal faible sécurisé).
+  // On n'autorise la fusion par nom QUE si la dictée fournit une ville ou un CP
+  // ET que ce second critère concorde avec celui du contact candidat. Sans
+  // second critère disponible/concordant → pas de fusion → création.
+  if (nomNorm && (villeNorm || cpNorm)) {
     const match = contacts.find((c) => {
       const candidats = [
         c.fullName,
@@ -195,18 +231,26 @@ export async function trouverOuCreerContact(
         c.firstName && c.lastName ? `${c.firstName} ${c.lastName}` : null,
         c.firstName && c.lastName ? `${c.lastName} ${c.firstName}` : null,
       ].filter(Boolean) as string[]
-      return candidats.some((n) => normaliserNom(n) === nomNorm)
+      const nomConcorde = candidats.some((n) => normaliserNom(n) === nomNorm)
+      if (!nomConcorde) return false
+      const { ville, cp } = villeCpContact(c)
+      const cpConcorde = !!cpNorm && !!cp && cp === cpNorm
+      const villeConcorde = !!villeNorm && !!ville && ville === villeNorm
+      return cpConcorde || villeConcorde
     })
     if (match) return { contactId: match.id, cree: false, matchType: 'nom' }
   }
 
-  // 4) Aucun match → création.
+  // 4) Aucun match → création (écriture : protégée par la RÈGLE 1).
   // On met tout `client_nom` dans lastName et firstName='' : Costructor accepte
   // et fullName devient juste "client_nom" (au lieu d'un split qui produit des
   // noms moches du type "Daquin Résidence Charles" pour les noms de chantier).
-  const { street, city, zip } = parseAdresseFr(input.client_adresse)
+  assertCompteJulien() // T3 : refuse la clé d'Olivier avant toute écriture
+  bannerCompte('ÉCRITURE')
   const email = input.client_email?.trim()
-  const phone = input.client_telephone?.trim()
+  // T2 : on assainit le téléphone (chiffres seuls) pour éviter le 400 sur les
+  // formats français saisis avec espaces ("06 12 34 56 78").
+  const phone = assainirTelephonePourEnvoi(input.client_telephone)
 
   const body: Record<string, unknown> = {
     type: 'client',
@@ -237,6 +281,8 @@ export async function trouverOuCreerContact(
 export async function pousserDevis(
   payload: CostructorQuotePayload,
 ): Promise<CostructorQuoteResponse> {
+  assertCompteJulien() // T3 / RÈGLE 1 : refuse la clé d'Olivier avant écriture
+  bannerCompte('ÉCRITURE')
   return costructorFetch<CostructorQuoteResponse>('/quotes', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -246,6 +292,7 @@ export async function pousserDevis(
 // Supprime un brouillon Costructor (utilisé pour éviter les doublons lors d'un re-push).
 // Tolère l'échec (déjà supprimé, ID périmé) pour ne pas bloquer le re-push.
 export async function supprimerDevis(quoteId: string): Promise<void> {
+  assertCompteJulien() // T3 / RÈGLE 1 : DELETE est une écriture
   if (!API_KEY) throw new Error('COSTRUCTOR_API_KEY manquante')
   try {
     await fetch(`${BASE_URL}/quotes/${quoteId}`, {
