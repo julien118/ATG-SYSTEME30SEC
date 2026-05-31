@@ -35,5 +35,9 @@ yarn-error.log*
 next-env.d.ts
 .mcp.json
 
-# données clients réelles (devis d'Olivier aspirés — PII de tiers, jamais commitées)
-data/devis-olivier/
+# données de travail locales (devis d'Olivier aspirés = PII de tiers, map de clone...) jamais commitées
+data/
+
+# livrables contenant la donnée commerciale d'Olivier (structure catalogue, modèles, SIRET) — jamais poussés
+DECOUVERTE-COMPTE-OLIVIER.md
+REPLICATION-LOG.md
