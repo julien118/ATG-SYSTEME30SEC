@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import ToastProvider from '@/components/ToastProvider'
+import AssistantDevis from '@/components/AssistantDevis'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -54,6 +55,8 @@ export default function RootLayout({
         <div className="flex-1 min-h-0 overflow-y-auto">
           <ToastProvider>{children}</ToastProvider>
         </div>
+        {/* Assistant de consultation des devis (lecture seule), flottant global. */}
+        <AssistantDevis />
       </body>
     </html>
   )
