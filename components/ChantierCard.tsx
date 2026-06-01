@@ -17,8 +17,13 @@ function formatDate(dateStr: string | null) {
 }
 
 function getChantierHref(chantier: Chantier) {
-  if (chantier.statut === 'rapport_genere') return `/chantiers/${chantier.id}/rapport`
+  // Généré ou Terminé : on ouvre le compte rendu (pas le formulaire d'edition).
+  if (chantier.statut === 'rapport_genere' || chantier.statut === 'termine') {
+    return `/chantiers/${chantier.id}/rapport`
+  }
+  // En cours : on reprend la visite.
   if (chantier.statut === 'en_cours') return `/chantiers/${chantier.id}/visite`
+  // Planifié : page de detail avec le bouton "Commencer la visite".
   return `/chantiers/${chantier.id}`
 }
 

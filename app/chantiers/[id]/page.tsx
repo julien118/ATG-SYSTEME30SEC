@@ -18,15 +18,19 @@ export default async function ChantierDetailPage({ params }: { params: { id: str
 
   if (!chantier) redirect('/chantiers')
 
-  // If rapport already exists, go to rapport page
-  if ((chantier as Chantier).statut === 'rapport_genere') {
+  const statut = (chantier as Chantier).statut
+
+  // Généré ou Terminé : on ouvre le compte rendu (pas le formulaire d'edition).
+  if (statut === 'rapport_genere' || statut === 'termine') {
     redirect(`/chantiers/${params.id}/rapport`)
   }
 
-  // If en_cours, go to visite
-  if ((chantier as Chantier).statut === 'en_cours') {
+  // En cours : on reprend la visite.
+  if (statut === 'en_cours') {
     redirect(`/chantiers/${params.id}/visite`)
   }
+
+  // Planifié : on reste ici (detail + bouton "Commencer la visite" dans le form).
 
   return (
     <div className="min-h-screen-safe bg-background">
@@ -40,7 +44,7 @@ export default async function ChantierDetailPage({ params }: { params: { id: str
       </header>
 
       <main className="px-5 py-6 max-w-lg mx-auto">
-        <h1 className="text-xl font-bold text-foreground mb-1">Modifier le chantier</h1>
+        <h1 className="text-xl font-bold text-foreground mb-1">Visite planifiée</h1>
         <p className="text-gray-400 text-sm mb-6">{(chantier as Chantier).client_nom}</p>
         <ChantierForm chantier={chantier as Chantier} userId={ATG_USER_ID} />
       </main>

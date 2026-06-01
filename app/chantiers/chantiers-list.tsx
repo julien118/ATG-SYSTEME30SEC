@@ -57,10 +57,12 @@ export default function ChantiersList({ chantiers }: ChantiersListProps) {
   const countEnCours = chantiers.filter((c) => ['planifie', 'en_cours', 'termine'].includes(c.statut)).length
   const countRapports = chantiers.filter((c) => c.statut === 'rapport_genere').length
 
+  // Onglets coherents avec les 3 statuts affiches : "En cours" regroupe le
+  // pipeline actif (Planifié + En cours + termine), "Générés" = rapport_genere.
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: 'tous', label: 'Tous', count: chantiers.length },
     { key: 'en_cours', label: 'En cours', count: countEnCours },
-    { key: 'rapports', label: 'Rapports', count: countRapports },
+    { key: 'rapports', label: 'Générés', count: countRapports },
   ]
 
   return (

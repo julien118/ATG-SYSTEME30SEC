@@ -39,6 +39,15 @@ export default async function RecapDevisPage({
   if (!chantierData) redirect('/chantiers')
   const chantier = chantierData as Chantier
 
+  // Lot 1.1 : arrivee sur l'etape Costructor => le chantier passe "Généré"
+  // (rapport_genere). Idempotent : on n'ecrit que si le statut change.
+  if (chantier.statut !== 'rapport_genere') {
+    await supabase
+      .from('chantiers')
+      .update({ statut: 'rapport_genere' })
+      .eq('id', params.id)
+  }
+
   const { data: devisData } = await supabase
     .from('devis')
     .select('*')

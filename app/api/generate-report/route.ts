@@ -117,11 +117,10 @@ export async function POST(request: Request) {
       .insert({ chantier_id: chantierId, contenu_json: rapport })
   }
 
-  // Update chantier status
-  await supabase
-    .from('chantiers')
-    .update({ statut: 'rapport_genere' })
-    .eq('id', chantierId)
+  // Le statut "Généré" (rapport_genere) n'est PLUS posé ici : il se déclenche
+  // désormais a l'arrivee sur l'etape Costructor (ecran recap). Pendant le compte
+  // rendu, la proposition technique et les metres, le chantier reste "termine"
+  // (affiche "En cours"). Cf. lot 1.1 des ameliorations.
 
   // Persiste le PDF dans le Storage et stocke son URL stable (Phase G, etape 1).
   // En cas d'echec storage, on ne casse pas la generation du compte rendu : on

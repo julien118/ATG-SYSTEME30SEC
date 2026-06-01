@@ -27,8 +27,13 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
       : toDatetimeLocal(new Date())
   )
   const [saving, setSaving] = useState(false)
+  const [starting, setStarting] = useState(false)
   const [chantierId, setChantierId] = useState(chantier?.id ?? null)
   const [error, setError] = useState<string | null>(null)
+
+  // Un chantier deja "Planifié" (page de detail) propose le bouton "Commencer
+  // la visite" en plus de l'enregistrement des infos.
+  const estPlanifie = chantier?.statut === 'planifie'
 
   // Auto-save existing chantier on blur
   const autoSave = async () => {
@@ -46,7 +51,20 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
       .eq('id', chantierId)
   }
 
-  const handleStart = async () => {
+  // Champs du chantier (hors statut), recopies a chaque ecriture.
+  const champsChantier = () => ({
+    client_nom: clientNom.trim(),
+    client_adresse: clientAdresse || null,
+    client_telephone: clientTelephone.trim() || null,
+    client_email: clientEmail.trim() || null,
+    objet_travaux: objetTravaux || null,
+    date_visite: dateVisite ? new Date(dateVisite).toISOString() : null,
+  })
+
+  // Enregistre la visite SANS la lancer : une creation part en "Planifié" (rdv a
+  // venir), une edition ne touche pas au statut. On atterrit sur la page de
+  // detail, ou le bouton "Commencer la visite" est disponible.
+  const handleSave = async () => {
     if (!clientNom.trim()) return
     setSaving(true)
     setError(null)
@@ -54,19 +72,9 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
     let id = chantierId
 
     if (!id) {
-      // Create new chantier
       const { data, error: insertError } = await supabase
         .from('chantiers')
-        .insert({
-          user_id: userId,
-          client_nom: clientNom.trim(),
-          client_adresse: clientAdresse || null,
-          client_telephone: clientTelephone.trim() || null,
-          client_email: clientEmail.trim() || null,
-          objet_travaux: objetTravaux || null,
-          date_visite: dateVisite ? new Date(dateVisite).toISOString() : null,
-          statut: 'en_cours',
-        })
+        .insert({ user_id: userId, ...champsChantier(), statut: 'planifie' })
         .select('id')
         .single()
 
@@ -79,22 +87,23 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
       id = data.id
       setChantierId(id)
     } else {
-      // Update existing and set en_cours
-      await supabase
-        .from('chantiers')
-        .update({
-          client_nom: clientNom.trim(),
-          client_adresse: clientAdresse || null,
-          client_telephone: clientTelephone.trim() || null,
-          client_email: clientEmail.trim() || null,
-          objet_travaux: objetTravaux || null,
-          date_visite: dateVisite ? new Date(dateVisite).toISOString() : null,
-          statut: 'en_cours',
-        })
-        .eq('id', id)
+      await supabase.from('chantiers').update(champsChantier()).eq('id', id)
     }
 
-    router.push(`/chantiers/${id}/visite`)
+    router.push(`/chantiers/${id}`)
+  }
+
+  // Lance la visite : enregistre les dernieres infos ET passe le chantier
+  // "En cours", puis ouvre l'ecran de visite.
+  const handleCommencerVisite = async () => {
+    if (!chantierId || starting) return
+    setStarting(true)
+    setError(null)
+    await supabase
+      .from('chantiers')
+      .update({ ...champsChantier(), statut: 'en_cours' })
+      .eq('id', chantierId)
+    router.push(`/chantiers/${chantierId}/visite`)
   }
 
   return (
@@ -203,23 +212,55 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
       )}
 
       {/* CTA */}
-      <button
-        onClick={handleStart}
-        disabled={!clientNom.trim() || saving}
-        className="btn-primary w-full text-lg py-4 mt-4"
-      >
-        {saving ? (
-          <span className="flex items-center justify-center gap-2">
-            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            Création...
-          </span>
-        ) : (
-          'Démarrer la visite →'
-        )}
-      </button>
+      {estPlanifie ? (
+        // Page de detail d'un chantier "Planifié" : action principale = commencer
+        // la visite ; action secondaire = enregistrer les modifications d'infos.
+        <div className="space-y-3 mt-4">
+          <button
+            onClick={handleCommencerVisite}
+            disabled={!clientNom.trim() || starting || saving}
+            className="btn-primary w-full text-lg py-4"
+          >
+            {starting ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Démarrage...
+              </span>
+            ) : (
+              'Commencer la visite →'
+            )}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!clientNom.trim() || saving || starting}
+            className="btn-secondary w-full py-3"
+          >
+            {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
+          </button>
+        </div>
+      ) : (
+        // Creation (ou chantier non planifié) : on enregistre la visite (Planifié).
+        <button
+          onClick={handleSave}
+          disabled={!clientNom.trim() || saving}
+          className="btn-primary w-full text-lg py-4 mt-4"
+        >
+          {saving ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Enregistrement...
+            </span>
+          ) : (
+            'Enregistrer la visite'
+          )}
+        </button>
+      )}
     </div>
   )
 }

@@ -1,9 +1,12 @@
 import type { ChantierStatut } from '@/lib/types'
 
+// Trois statuts affiches : Planifié (bleu), En cours (ambre), Généré (vert).
+// `termine` (visite finie mais devis pas encore arrive a l'etape Costructor) est
+// rendu a l'identique de `en_cours` : pour Olivier, c'est toujours "En cours".
 const CONFIG: Record<ChantierStatut, { label: string; icon: string; className: string }> = {
   planifie: {
     label: 'Planifié',
-    icon: '📋',
+    icon: '📅',
     className: 'bg-blue-50 text-blue-700',
   },
   en_cours: {
@@ -12,13 +15,13 @@ const CONFIG: Record<ChantierStatut, { label: string; icon: string; className: s
     className: 'bg-amber-50 text-amber-700',
   },
   termine: {
-    label: 'Terminé',
-    icon: '✓',
-    className: 'bg-gray-100 text-gray-600',
+    label: 'En cours',
+    icon: '🔨',
+    className: 'bg-amber-50 text-amber-700',
   },
   rapport_genere: {
-    label: 'Rapport',
-    icon: '📄',
+    label: 'Généré',
+    icon: '✅',
     className: 'bg-emerald-50 text-emerald-700',
   },
 }
