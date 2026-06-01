@@ -57,6 +57,34 @@ async function postJ(path, body) {
   }
   return { status: 429, body: 'rate limit persistant' }
 }
+// DELETE cible (Julien) avec retry 429. JAMAIS appele sur le compte d'Olivier
+// (hJ porte la cle de Julien). Utilise pour remplacer un modele lors de la
+// re-replication.
+async function delJ(path) {
+  for (let i = 0; i < 6; i++) {
+    const r = await fetch(`${BASE}${path}`, { method: 'DELETE', headers: hJ })
+    if (r.status === 429) { await sleep(1000 * (i + 1)); continue }
+    return r.status
+  }
+  return 429
+}
+
+// Taxes du compte de Julien : taux (points de base) -> id de taxe. Olivier et
+// Julien ont des ids de taxe DIFFERENTS pour un meme taux ; la replique etant
+// CROSS-compte, on recopie la TVA en mappant par TAUX vers l'id de Julien.
+const TAXES_JULIEN = new Map()
+async function chargerTaxesJulien() {
+  const r = await fetch(`${BASE}/taxes?_limit=100`, { headers: hJ })
+  const j = await r.json()
+  for (const t of (j.data || j || [])) if (t && t.rate != null) TAXES_JULIEN.set(t.rate, t.id)
+  console.log('Taxes Julien :', [...TAXES_JULIEN.entries()].map(([rt, id]) => `${rt}=>…${String(id).slice(-6)}`).join('  '))
+}
+// Id de taxe Julien correspondant au taux porte par une ligne source (Olivier).
+function taxeJulienPourLigne(l) {
+  const rate = (l.tax && l.tax.rate != null) ? l.tax.rate : (l.taxRate != null ? l.taxRate : null)
+  if (rate == null || rate === 0) return null
+  return TAXES_JULIEN.get(rate) || null
+}
 
 const banner = (phase) => {
   console.log('=============================================================')
@@ -154,6 +182,12 @@ function transformerLignes(lignes) {
       const ligne = { type: 'product', product: prodId, description: l.description || '', quantity: l.quantity != null ? l.quantity : 1 }
       if (l.sellPrice != null) ligne.sellPrice = l.sellPrice
       if (l.unit && l.unit.id) ligne.unit = l.unit.id
+      // Recopie la TVA : on suit le taux du modele source, mappe vers l'id de
+      // taxe de Julien (cross-compte). Aucun taux force : si la ligne source n'a
+      // pas de taxe, on n'en met pas.
+      const tjid = taxeJulienPourLigne(l)
+      if (tjid) ligne.tax = tjid
+      else if (l.taxRate != null && l.taxRate > 0) ligne.taxRate = l.taxRate
       out.push(ligne)
     } else {
       out.push({ type: 'text', description: l.description || '' })
@@ -205,7 +239,54 @@ async function clonerDevis() {
 }
 
 // ---------------------------------------------------------------
+// PHASE MODELES (re-replication EN REMPLACEMENT, avec TVA ligne par ligne)
+// ---------------------------------------------------------------
+// Supprime le clone Julien existant de chaque modele et le recree avec la TVA
+// recopiee du modele source. A utiliser quand les modeles ont ete repliques sans
+// TVA (avant le fix). DELETE uniquement chez Julien (delJ), jamais chez Olivier.
+async function reModelerAvecTva() {
+  banner('modeles (re-replication avec TVA)')
+  if (KEY_JULIEN === KEY_OLIVIER) { console.error('STOP : cle cible == cle Olivier.'); process.exit(1) }
+  if (!Object.keys(map.products).length) { console.error('Map produits vide : lancer "products" avant.'); process.exit(1) }
+  await chargerTaxesJulien()
+  const j = await getO('/quotes?_limit=1000')
+  const modeles = (j.data || []).filter((q) => q.model)
+  console.log(`${modeles.length} modeles source a re-repliquer avec TVA\n`)
+  let remplaces = 0, vides = 0, echecs = 0
+  for (const q of modeles) {
+    const ancien = map.quotes[q.id]
+    if (ancien) {
+      const s = await delJ(`/quotes/${ancien}`)
+      console.log(`  - ancien clone ${ancien} supprime (${s})`)
+      delete map.quotes[q.id]; saveMap()
+      await sleep(THROTTLE)
+    }
+    const d = await getO(`/quotes/${q.id}?_expand=lines`)
+    const full = d.data || d
+    const lignes = transformerLignes(full.lines)
+    if (!lignes.length) { vides++; console.log(`  (vide, saute) ${q.number || q.id}`); continue }
+    const customer = (full.customer && map.contacts[full.customer.id]) || CONTACT_FALLBACK
+    const body = { customer, description: full.description || full.name || 'Modele', lines: lignes, model: true }
+    if (full.issuedAt) body.issuedAt = full.issuedAt
+    const res = await postJ('/quotes', body)
+    if (res.status === 200) {
+      const nv = res.body.data || res.body
+      map.quotes[q.id] = nv.id; remplaces++; saveMap()
+      // Controle TVA : nombre de lignes produit portant une taxe.
+      const avecTva = lignes.filter((l) => l.type === 'product' && (l.tax || l.taxRate)).length
+      const totalProd = lignes.filter((l) => l.type === 'product').length
+      console.log(`  + [MODELE] ${(q.number || q.id).padEnd(14)} -> ${nv.id}  | lignes TVA ${avecTva}/${totalProd}`)
+    } else {
+      echecs++
+      console.log(`  ! echec ${q.number || q.id} -> ${res.status} ${JSON.stringify(res.body).slice(0, 120)}`)
+    }
+    await sleep(THROTTLE)
+  }
+  console.log(`\nModeles re-repliques : ${remplaces}, vides ${vides}, echecs ${echecs}.`)
+}
+
+// ---------------------------------------------------------------
 const phase = process.argv[2]
-const run = { products: clonerProduits, contacts: clonerContacts, quotes: clonerDevis }[phase]
-if (!run) { console.error('Phase inconnue. Usage: products | contacts | quotes'); process.exit(1) }
+const run = { products: clonerProduits, contacts: clonerContacts, quotes: clonerDevis, modeles: reModelerAvecTva }[phase]
+if (!run) { console.error('Phase inconnue. Usage: products | contacts | quotes | modeles'); process.exit(1) }
 run().catch((e) => { console.error(e); saveMap(); process.exit(1) })

@@ -38,6 +38,10 @@ export interface LigneModele {
   subtotal?: number | null
   quantity?: number | null
   sellPrice?: number | null
+  // TVA portee par la ligne : objet tax (id propre au compte) et/ou taux en
+  // points de base (1000 = 10 %). On recopie ce que le modele porte.
+  taxRate?: number | null
+  tax?: { id: string; rate?: number } | null
   unit?: { id: string; symbol?: string } | null
   product?: { id: string; name?: string } | null
   lines?: LigneModele[]
@@ -54,6 +58,10 @@ export type LignePayload =
       quantity: number
       sellPrice: number
       unit: string
+      // TVA recopiee du modele (meme compte) : id de taxe et/ou taux en points
+      // de base. Aucun taux force : on suit la ligne du modele.
+      tax?: string
+      taxRate?: number
     }
 
 export interface MetresFacade {
@@ -314,6 +322,38 @@ export async function extraireMetres(dictee: string): Promise<MetresDevis> {
 const ordonner = (lignes: LigneModele[] | undefined): LigneModele[] =>
   [...(lignes ?? [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
 
+// Recopie la TVA d'une ligne modele sur la ligne du devis (meme compte, donc
+// l'id de taxe reste valide). On privilegie l'objet tax (id), a defaut on
+// transmet le taux en points de base. Aucun taux force : si le modele n'a pas de
+// taxe sur la ligne, on n'en met pas.
+function taxeLigne(l: LigneModele): { tax?: string; taxRate?: number } {
+  if (l.tax?.id) return { tax: l.tax.id }
+  if (typeof l.taxRate === 'number' && l.taxRate > 0) return { taxRate: l.taxRate }
+  return {}
+}
+
+// Id de taxe le plus frequent dans le modele (taux dominant), pour les postes
+// AJOUTES qui n'existent pas dans le modele (points singuliers issus du catalogue
+// plat). On les aligne sur le taux dominant du modele plutot que de les laisser
+// sans TVA. Renvoie undefined si le modele ne porte aucune taxe.
+function taxIdModalDuModele(lines: LigneModele[]): string | undefined {
+  const compte = new Map<string, number>()
+  const walk = (ls?: LigneModele[]) => {
+    for (const l of ls ?? []) {
+      if (l.type === 'product' && l.tax?.id)
+        compte.set(l.tax.id, (compte.get(l.tax.id) ?? 0) + 1)
+      if (l.type === 'group') walk(l.lines)
+    }
+  }
+  walk(lines)
+  let best: string | undefined
+  let n = 0
+  for (const [id, c] of Array.from(compte.entries())) {
+    if (c > n) { n = c; best = id }
+  }
+  return best
+}
+
 // Assemble les enfants d'un groupe en appliquant un résolveur de quantité.
 // Une ligne produit dont la quantité résolue est nulle/≤0 est ABANDONNÉE, et
 // le titre texte qui la précède immédiatement l'est aussi (pas de titre
@@ -350,6 +390,7 @@ function assemblerEnfants(
           quantity: q,
           sellPrice: l.sellPrice ?? 0,
           unit: l.unit?.id ?? uniteVersCostructorId(l.unit?.symbol ?? ''),
+          ...taxeLigne(l),
         })
       }
       // produit abandonné → on jette aussi son titre en attente
@@ -486,6 +527,7 @@ function unitIdProduit(p: ProduitPlat, uniteFallback: string): string {
 function construireGroupePoints(
   points: PointSingulier[],
   produits: ProduitPlat[],
+  taxParDefaut?: string,
 ): { groupe: LignePayload | null; nonResolus: PointSingulier[] } {
   const lines: LignePayload[] = []
   const nonResolus: PointSingulier[] = []
@@ -506,6 +548,9 @@ function construireGroupePoints(
       quantity: pt.quantite,
       sellPrice: prod.sellPrice ?? 0,
       unit: unitIdProduit(prod, pt.unite),
+      // Aligne le point singulier sur le taux dominant du modele (poste ajoute,
+      // absent du modele) ; rien si le modele ne porte pas de TVA.
+      ...(taxParDefaut ? { tax: taxParDefaut } : {}),
     })
   }
   if (lines.length === 0) return { groupe: null, nonResolus }
@@ -531,6 +576,8 @@ export function construirePayloadDepuisModele(
   const out: LignePayload[] = []
   let facadesEmises = false
   let nonResolus: PointSingulier[] = []
+  // Taux de TVA dominant du modele, pour les postes ajoutes (points singuliers).
+  const taxModal = taxIdModalDuModele(modeleLines)
 
   for (const ligne of ordonner(modeleLines)) {
     if (ligne.type === 'text') {
@@ -547,6 +594,7 @@ export function construirePayloadDepuisModele(
           quantity: ligne.quantity ?? 1,
           sellPrice: ligne.sellPrice ?? 0,
           unit: ligne.unit?.id ?? uniteVersCostructorId(ligne.unit?.symbol ?? ''),
+          ...taxeLigne(ligne),
         })
       }
       continue
@@ -570,6 +618,7 @@ export function construirePayloadDepuisModele(
         const { groupe, nonResolus: nr } = construireGroupePoints(
           metres.points_singuliers,
           produits,
+          taxModal,
         )
         if (groupe) out.push(groupe)
         nonResolus = nr
@@ -629,6 +678,7 @@ export async function pousserDevisGroupe(payload: {
     payload.description,
     chantierId,
   )
+
   const r = await fetch(`${BASE_URL}/quotes`, {
     method: 'POST',
     headers: {
