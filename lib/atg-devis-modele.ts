@@ -16,6 +16,7 @@
 
 import { anthropic } from './anthropic'
 import { uniteVersCostructorId } from './costructor'
+import { composerDescriptionAvecRapport } from './rapport-pdf'
 
 // Garde-fous de compte (RÈGLE 1) : définis dans un module neutre partagé pour
 // éviter un cycle d'import avec costructor.ts. Ré-exportés ici pour que les
@@ -617,8 +618,17 @@ export async function pousserDevisGroupe(payload: {
   customer: string
   description: string
   lines: LignePayload[]
+  chantierId?: string | null // si fourni, on injecte le lien du compte rendu
 }): Promise<any> {
   const key = assertCompteJulien() // refuse la clé d'Olivier
+  // Etape 2 (Phase G) : au moment du push, on enrichit la description avec le
+  // lien du PDF de compte rendu du chantier (workaround R2). Si aucun PDF n'a été
+  // persisté, la description reste inchangée (pas de lien cassé).
+  const { customer, lines, chantierId } = payload
+  const description = await composerDescriptionAvecRapport(
+    payload.description,
+    chantierId,
+  )
   const r = await fetch(`${BASE_URL}/quotes`, {
     method: 'POST',
     headers: {
@@ -626,7 +636,9 @@ export async function pousserDevisGroupe(payload: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(payload), // pas de status → BROUILLON par défaut
+    // On n'envoie QUE les champs connus de Costructor (pas de chantierId).
+    // Pas de status → BROUILLON par défaut.
+    body: JSON.stringify({ customer, description, lines }),
   })
   if (!r.ok) throw new Error(`POST /quotes ${r.status} : ${await r.text()}`)
   const j = (await r.json()) as { data?: any } & any

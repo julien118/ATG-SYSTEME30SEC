@@ -238,3 +238,65 @@ export async function persistRapportPdf(
 
   return { url, path, taille: buffer.byteLength }
 }
+
+// =============================================================
+// Lien du compte rendu dans le devis (Phase G, etape 2)
+// =============================================================
+// Workaround valide en R2 : l'upload direct d'un fichier dans Costructor renvoie
+// 401, donc on ne joint pas une vraie piece jointe. A la place, on insere l'URL
+// stable du PDF de compte rendu dans la description du devis, sous une ligne
+// clairement intitulee. Si le PDF n'a pas encore ete genere (pas d'URL), on
+// n'ajoute rien : pas de ligne cassee ni de lien vide.
+
+// Texte cliquable affiché (pas l'URL brute) : le champ description de Costructor
+// est rendu en HTML, on insère donc une vraie ancre <a href> plutôt qu'un texte
+// noir non cliquable.
+const TEXTE_LIEN_CR = 'Compte rendu de visite'
+
+// Lit l'URL stable du PDF de compte rendu d'un chantier dans rapports.pdf_url.
+// Renvoie null si le rapport n'existe pas encore ou si aucun PDF n'a ete persiste
+// (colonne nulle/vide). On utilise maybeSingle pour ne pas lever quand il n'y a
+// pas de ligne rapport pour ce chantier.
+export async function recupererUrlRapportPdf(
+  chantierId: string,
+): Promise<string | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('rapports')
+    .select('pdf_url')
+    .eq('chantier_id', chantierId)
+    .maybeSingle()
+  if (error) return null
+  const url = ((data?.pdf_url as string | null) ?? '').trim()
+  return url || null
+}
+
+// Ajoute un lien cliquable "Compte rendu de visite" (ancre HTML) a une
+// description de devis. Fonction pure (testable sans base) : si l'URL est
+// absente, la description est renvoyee telle quelle, sans lien ni ancre vide.
+// Le lien est mis sur son propre paragraphe (<br><br>), nettement separe du
+// texte qui precede. Idempotente : si un lien vers la meme URL est deja present,
+// on ne le duplique pas (re-push d'un meme devis).
+export function ajouterLienCompteRendu(
+  description: string,
+  url: string | null | undefined,
+): string {
+  const u = (url ?? '').trim()
+  if (!u) return description ?? ''
+  const base = (description ?? '').trimEnd()
+  if (base.includes(`href="${u}"`)) return base
+  const lienHtml = `<a href="${u}">${TEXTE_LIEN_CR}</a>`
+  return base ? `${base}<br><br>${lienHtml}` : lienHtml
+}
+
+// Compose la description finale d'un devis en y integrant le lien du compte rendu
+// du chantier, si un PDF a ete persiste. Sinon, renvoie la description de base
+// inchangee. C'est le point d'entree a appeler au moment du push.
+export async function composerDescriptionAvecRapport(
+  description: string,
+  chantierId: string | null | undefined,
+): Promise<string> {
+  if (!chantierId) return description ?? ''
+  const url = await recupererUrlRapportPdf(chantierId)
+  return ajouterLienCompteRendu(description, url)
+}

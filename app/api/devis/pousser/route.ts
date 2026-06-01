@@ -14,6 +14,7 @@ import {
   supprimerDevis,
   trouverOuCreerContact,
 } from '@/lib/costructor'
+import { composerDescriptionAvecRapport } from '@/lib/rapport-pdf'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Chantier, Devis, SectionDevis } from '@/lib/types'
 
@@ -83,9 +84,16 @@ export async function POST(request: Request) {
       await supprimerDevis(devis.costructor_devis_id)
     }
 
-    const description = `Ravalement façade ${chantier.client_nom}${
+    const descriptionBase = `Ravalement façade ${chantier.client_nom}${
       chantier.client_adresse ? ', ' + chantier.client_adresse : ''
     }.\n\nGénéré depuis Le Système 30 Secondes par ATG.`
+
+    // Étape 2 (Phase G) : on intègre le lien du PDF de compte rendu du chantier
+    // dans la description (workaround R2). Sans PDF persisté, description inchangée.
+    const description = await composerDescriptionAvecRapport(
+      descriptionBase,
+      chantier.id,
+    )
 
     const payload = construirePayloadDevis({
       contactId,
