@@ -15,8 +15,9 @@ interface ChantiersListProps {
   profile: Profile
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function ChantiersList({ chantiers, profile: _profile }: ChantiersListProps) {
+// `profile` fait partie des props (passe par l'appelant) mais n'est pas utilise
+// ici : on ne le destructure pas, pour eviter une variable inutilisee.
+export default function ChantiersList({ chantiers }: ChantiersListProps) {
   const [tab, setTab] = useState<Tab>('tous')
   const [search, setSearch] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Chantier | null>(null)

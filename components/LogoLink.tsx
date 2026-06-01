@@ -14,8 +14,9 @@ interface LogoLinkProps {
 const LOGO_RATIO = 128 / 38
 const DISPLAY_HEIGHT = 44
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function LogoLink({ priority = false, width: _w, height: _h }: LogoLinkProps) {
+// width/height font partie des props (passees par les callers) mais sont
+// volontairement ignorees ici : on ne les destructure pas (taille uniforme).
+export default function LogoLink({ priority = false }: LogoLinkProps) {
   const computedWidth = Math.round(DISPLAY_HEIGHT * LOGO_RATIO)
   return (
     <Link href="/chantiers" className="inline-flex items-center select-none">
