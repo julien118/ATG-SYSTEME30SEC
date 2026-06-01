@@ -15,8 +15,12 @@
 // (`getDevisOlivierLectureSeule`), jamais écrit.
 
 import { anthropic } from './anthropic'
-import { uniteVersCostructorId } from './costructor'
+import { supprimerDevis, uniteVersCostructorId } from './costructor'
 import { composerDescriptionAvecRapport } from './rapport-pdf'
+import {
+  lireDevisCostructorId,
+  memoriserDevisCostructorId,
+} from './devis-idempotence'
 
 // Garde-fous de compte (RÈGLE 1) : définis dans un module neutre partagé pour
 // éviter un cycle d'import avec costructor.ts. Ré-exportés ici pour que les
@@ -679,6 +683,15 @@ export async function pousserDevisGroupe(payload: {
     chantierId,
   )
 
+  // Idempotence (Phase H) : avant de pousser un nouveau brouillon pour ce
+  // chantier, on supprime l'ancien (id memorisé) pour remplacer au lieu
+  // d'accumuler. DELETE protégé par le garde-fou (jamais chez Olivier) et toléré
+  // en échec (id périmé). Symétrique de ce que fait la route /api/devis/pousser.
+  if (chantierId) {
+    const ancien = await lireDevisCostructorId(chantierId)
+    if (ancien) await supprimerDevis(ancien)
+  }
+
   const r = await fetch(`${BASE_URL}/quotes`, {
     method: 'POST',
     headers: {
@@ -692,5 +705,9 @@ export async function pousserDevisGroupe(payload: {
   })
   if (!r.ok) throw new Error(`POST /quotes ${r.status} : ${await r.text()}`)
   const j = (await r.json()) as { data?: any } & any
-  return j.data !== undefined ? j.data : j
+  const cree = j.data !== undefined ? j.data : j
+
+  // Memorise le nouvel id pour que le prochain push de ce chantier le remplace.
+  if (chantierId && cree?.id) await memoriserDevisCostructorId(chantierId, cree.id)
+  return cree
 }
