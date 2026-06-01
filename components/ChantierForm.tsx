@@ -3,7 +3,13 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { toDatetimeLocal } from '@/lib/utils'
+import {
+  arrondirAuCreneau,
+  combinerDateHeure,
+  creneauxHoraires,
+  heureLaPlusProche,
+  toDateInput,
+} from '@/lib/utils'
 import AddressAutocomplete from './AddressAutocomplete'
 import type { Chantier } from '@/lib/types'
 
@@ -21,11 +27,18 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
   const [clientTelephone, setClientTelephone] = useState(chantier?.client_telephone ?? '')
   const [clientEmail, setClientEmail] = useState(chantier?.client_email ?? '')
   const [objetTravaux, setObjetTravaux] = useState(chantier?.objet_travaux ?? '')
-  const [dateVisite, setDateVisite] = useState(
-    chantier?.date_visite
-      ? toDatetimeLocal(new Date(chantier.date_visite))
-      : toDatetimeLocal(new Date())
+  // Date et heure separees (lot 1.2). Defaut a la creation : aujourd'hui + le
+  // prochain creneau valide (jamais l'instant present a la minute). Pour un
+  // chantier existant : on cale l'heure stockee sur le creneau le plus proche
+  // (gere une heure ancienne hors creneau sans planter).
+  const dateExistante = chantier?.date_visite ? new Date(chantier.date_visite) : null
+  const [dateJour, setDateJour] = useState(
+    toDateInput(dateExistante ?? new Date())
   )
+  const [heure, setHeure] = useState(
+    dateExistante ? heureLaPlusProche(dateExistante) : arrondirAuCreneau(new Date())
+  )
+  const CRENEAUX = creneauxHoraires()
   const [saving, setSaving] = useState(false)
   const [starting, setStarting] = useState(false)
   const [chantierId, setChantierId] = useState(chantier?.id ?? null)
@@ -46,7 +59,7 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
         client_telephone: clientTelephone || null,
         client_email: clientEmail || null,
         objet_travaux: objetTravaux,
-        date_visite: dateVisite ? new Date(dateVisite).toISOString() : null,
+        date_visite: combinerDateHeure(dateJour, heure).toISOString(),
       })
       .eq('id', chantierId)
   }
@@ -58,7 +71,7 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
     client_telephone: clientTelephone.trim() || null,
     client_email: clientEmail.trim() || null,
     objet_travaux: objetTravaux || null,
-    date_visite: dateVisite ? new Date(dateVisite).toISOString() : null,
+    date_visite: combinerDateHeure(dateJour, heure).toISOString(),
   })
 
   // Enregistre la visite SANS la lancer : une creation part en "Planifié" (rdv a
@@ -189,19 +202,34 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
         />
       </div>
 
-      {/* Date de visite */}
+      {/* Date et heure de la visite (lot 1.2) : date a gauche (large), heure a
+          droite (creneaux 30 min de 07:00 a 18:30, menu deroulant). */}
       <div>
-        <label htmlFor="date_visite" className="block text-sm font-medium text-foreground mb-1.5">
+        <label htmlFor="date_visite_jour" className="block text-sm font-medium text-foreground mb-1.5">
           Date et heure de la visite
         </label>
-        <input
-          id="date_visite"
-          type="datetime-local"
-          value={dateVisite}
-          onChange={(e) => setDateVisite(e.target.value)}
-          onBlur={autoSave}
-          className="input-ionnyx"
-        />
+        <div className="flex gap-2">
+          <input
+            id="date_visite_jour"
+            type="date"
+            value={dateJour}
+            onChange={(e) => setDateJour(e.target.value)}
+            onBlur={autoSave}
+            className="input-ionnyx flex-[2] min-w-0"
+          />
+          <select
+            id="date_visite_heure"
+            value={heure}
+            onChange={(e) => setHeure(e.target.value)}
+            onBlur={autoSave}
+            aria-label="Heure de la visite"
+            className="input-ionnyx flex-1 min-w-0"
+          >
+            {CRENEAUX.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Error visible */}
