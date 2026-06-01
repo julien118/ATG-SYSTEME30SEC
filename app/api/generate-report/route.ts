@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { anthropic } from '@/lib/anthropic'
 import { SYSTEM_PROMPT, buildUserPrompt } from '@/lib/prompts'
 import { ATG_USER_ID } from '@/lib/atg'
+import { persistRapportPdf } from '@/lib/rapport-pdf'
 import type { Chantier, CaptureItem, RapportContenu } from '@/lib/types'
 
 // Mode démo ATG : pas de check d'auth, pas de limite "2 rapports".
@@ -122,7 +123,18 @@ export async function POST(request: Request) {
     .update({ statut: 'rapport_genere' })
     .eq('id', chantierId)
 
-  return NextResponse.json({ rapport })
+  // Persiste le PDF dans le Storage et stocke son URL stable (Phase G, etape 1).
+  // En cas d'echec storage, on ne casse pas la generation du compte rendu : on
+  // logge et on continue (le PDF reste regenerable a la volee via /api/export-pdf).
+  let pdfUrl: string | null = null
+  try {
+    const persist = await persistRapportPdf(chantierId)
+    pdfUrl = persist.url
+  } catch (e) {
+    console.error('[api/generate-report] persistRapportPdf:', (e as Error).message)
+  }
+
+  return NextResponse.json({ rapport, pdf_url: pdfUrl })
   } catch {
     return NextResponse.json({ error: 'Report generation failed' }, { status: 500 })
   }
