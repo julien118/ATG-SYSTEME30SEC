@@ -4,27 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import LogoLink from '@/components/LogoLink'
 import RapportClient from './rapport-client'
 import { ATG_USER_ID } from '@/lib/atg'
+import { formaterHeureVisite } from '@/lib/utils'
 import type { RapportContenu } from '@/lib/types'
-
-// Heure de visite formatee "14h30" depuis le timestamp stocke. Forcee sur le
-// fuseau Europe/Paris pour rester correcte quel que soit le fuseau du serveur
-// (Vercel = UTC). Renvoie null hors de la plage de travail 7h-18h30 : ainsi un
-// chantier ancien sans heure reelle (date seule = minuit) n'affiche pas une
-// heure parasite, et on n'ecrit jamais "à" tout seul.
-function formaterHeureVisite(iso: string | null | undefined): string | null {
-  if (!iso) return null
-  const parts = new Intl.DateTimeFormat('fr-FR', {
-    timeZone: 'Europe/Paris',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date(iso))
-  const h = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10)
-  const m = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10)
-  const minutes = h * 60 + m
-  if (minutes < 7 * 60 || minutes > 18 * 60 + 30) return null
-  return `${h.toString().padStart(2, '0')}h${m.toString().padStart(2, '0')}`
-}
 
 export default async function RapportPage({ params }: { params: { id: string } }) {
   const supabase = createClient()

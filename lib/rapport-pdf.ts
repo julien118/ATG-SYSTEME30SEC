@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { jsPDF } from 'jspdf'
 import { createAdminClient } from './supabase/admin'
+import { formaterHeureVisite } from './utils'
 import type { RapportContenu } from './types'
 
 const PRIMARY: [number, number, number] = [16, 185, 129]
@@ -84,8 +85,16 @@ async function fetchImg(url: string): Promise<{ data: string; w: number; h: numb
 
 // Construit le PDF A4 du compte rendu et renvoie ses octets (ArrayBuffer, valide
 // comme corps de NextResponse et comme contenu d'upload Storage).
-export async function construireRapportPdf(c: RapportContenu): Promise<ArrayBuffer> {
+export async function construireRapportPdf(
+  c: RapportContenu,
+  heure?: string | null,
+): Promise<ArrayBuffer> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+
+  // Date (et heure de visite si disponible, lot 3.6) affichee dans l'en-tete et
+  // les coordonnees.
+  const dateBase = c.client.date_visite || ''
+  const dateAvecHeure = dateBase ? (heure ? `${dateBase} à ${heure}` : dateBase) : ''
 
   // Bandeau d'en-tete sombre (lot 3.1) : logo ATG blanc a gauche, titre et date a
   // droite.
@@ -111,7 +120,7 @@ export async function construireRapportPdf(c: RapportContenu): Promise<ArrayBuff
   doc.setFontSize(9.5)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(205, 205, 205)
-  doc.text(c.client.date_visite || 'Date non renseignée', PW - M, 24, { align: 'right' })
+  doc.text(dateAvecHeure || 'Date non renseignée', PW - M, 24, { align: 'right' })
 
   let y = BAND_H + 12
 
@@ -134,7 +143,7 @@ export async function construireRapportPdf(c: RapportContenu): Promise<ArrayBuff
     `Adresse : ${c.client.adresse || 'Non renseignée'}`,
     `Téléphone : ${c.client.telephone || 'Non renseigné'}`,
     `Email : ${c.client.email || 'Non renseigné'}`,
-    `Date de visite : ${c.client.date_visite || 'Non renseignée'}`,
+    `Date de visite : ${dateAvecHeure || 'Non renseignée'}`,
   ]) { doc.text(line, M, y); y += 5 }
   y += 4
   doc.setDrawColor(220, 220, 220)
@@ -256,7 +265,17 @@ export async function persistRapportPdf(
     throw new Error(`Rapport introuvable pour le chantier ${chantierId}`)
   }
 
-  const buffer = await construireRapportPdf(rapport.contenu_json as RapportContenu)
+  // Lot 3.6 : heure de visite depuis le timestamp du chantier, pour l'en-tete PDF.
+  const { data: chantier } = await supabase
+    .from('chantiers')
+    .select('date_visite')
+    .eq('id', chantierId)
+    .single()
+  const heure = formaterHeureVisite(
+    (chantier as { date_visite: string | null } | null)?.date_visite ?? null,
+  )
+
+  const buffer = await construireRapportPdf(rapport.contenu_json as RapportContenu, heure)
   const path = `${chantierId}.pdf`
 
   // upsert: true -> ecrasement au meme chemin a la regeneration (pas d'accumulation).
