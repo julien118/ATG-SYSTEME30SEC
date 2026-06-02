@@ -8,6 +8,8 @@
 // l'URL stable dans rapports.pdf_url. Ecrasement (upsert) a chaque (re)generation,
 // donc pas d'accumulation et URL inchangee.
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { jsPDF } from 'jspdf'
 import { createAdminClient } from './supabase/admin'
 import type { RapportContenu } from './types'
@@ -21,6 +23,22 @@ const CW = PW - M * 2
 const PHOTO_W = CW * 0.8
 
 const BUCKET_RAPPORTS = 'rapports'
+
+// Logo ATG blanc pour le bandeau sombre (lot 3.1). Lu une seule fois depuis
+// public/ et mis en cache en data URL base64 pour jsPDF. Source 128x64 (ratio 2:1).
+// Les routes PDF tournent en runtime Node, donc l'acces disque est disponible.
+const LOGO_ATG_RATIO = 128 / 64
+let logoAtgBlancCache: string | null = null
+function logoAtgBlanc(): string | null {
+  if (logoAtgBlancCache) return logoAtgBlancCache
+  try {
+    const buf = readFileSync(join(process.cwd(), 'public', 'logo-atg-blanc.png'))
+    logoAtgBlancCache = `data:image/png;base64,${buf.toString('base64')}`
+  } catch {
+    logoAtgBlancCache = null
+  }
+  return logoAtgBlancCache
+}
 
 function addFooter(doc: jsPDF) {
   const n = doc.getNumberOfPages()
@@ -69,24 +87,44 @@ async function fetchImg(url: string): Promise<{ data: string; w: number; h: numb
 export async function construireRapportPdf(c: RapportContenu): Promise<ArrayBuffer> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
 
-  // Bandeau d'en-tete
+  // Bandeau d'en-tete sombre (lot 3.1) : logo ATG blanc a gauche, titre et date a
+  // droite.
+  const BAND_H = 36
   doc.setFillColor(...DARK)
-  doc.rect(0, 0, PW, 32, 'F')
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(18)
-  doc.setFont('helvetica', 'bold')
-  doc.text('RAPPORT DE VISITE', M, 16)
-  doc.setFontSize(10)
-  doc.setFont('helvetica', 'normal')
-  doc.text(`${c.client.nom} — ${c.client.date_visite || 'Date non renseignée'}`, M, 24)
+  doc.rect(0, 0, PW, BAND_H, 'F')
 
-  let y = 42
+  const logo = logoAtgBlanc()
+  if (logo) {
+    const logoH = 12
+    const logoW = logoH * LOGO_ATG_RATIO
+    try {
+      doc.addImage(logo, 'PNG', M, (BAND_H - logoH) / 2, logoW, logoH)
+    } catch {
+      // Logo indisponible : on continue sans bloquer la generation du PDF.
+    }
+  }
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(17)
+  doc.setFont('helvetica', 'bold')
+  doc.text('RAPPORT DE VISITE', PW - M, 16, { align: 'right' })
+  doc.setFontSize(9.5)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(205, 205, 205)
+  doc.text(c.client.date_visite || 'Date non renseignée', PW - M, 24, { align: 'right' })
+
+  let y = BAND_H + 12
 
   // Informations client
   doc.setFontSize(12)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...PRIMARY)
   doc.text('INFORMATIONS CLIENT', M, y)
+  // Filet d'accent sous le titre de section pour la hierarchie visuelle.
+  doc.setDrawColor(...PRIMARY)
+  doc.setLineWidth(0.6)
+  doc.line(M, y + 1.8, M + 22, y + 1.8)
+  doc.setLineWidth(0.2)
   y += 8
   doc.setFontSize(9)
   doc.setFont('helvetica', 'normal')
