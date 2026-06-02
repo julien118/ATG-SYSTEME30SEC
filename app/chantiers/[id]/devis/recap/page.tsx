@@ -205,21 +205,6 @@ export default async function RecapDevisPage({
           })}
         </div>
 
-        {/* Boutons ajout (visuels Costructor-like, désactivés pour la démo) */}
-        <div className="mx-4 mt-3 flex flex-wrap gap-2">
-          {['+ Nouvelle ligne', '+ Section', '+ Texte', '+ Saut de ligne', '+ Saut de page'].map(
-            (l) => (
-              <span
-                key={l}
-                className="inline-flex items-center px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs font-medium opacity-60 cursor-not-allowed"
-                title="Disponible directement dans Costructor après envoi"
-              >
-                {l}
-              </span>
-            ),
-          )}
-        </div>
-
         {/* Totaux à droite, style Costructor */}
         <div className="mx-4 mt-6 flex justify-end">
           <div className="w-full sm:w-80 rounded-xl border border-border bg-white overflow-hidden">
