@@ -251,7 +251,7 @@ export async function persistRapportPdf(
 // Texte cliquable affiché (pas l'URL brute) : le champ description de Costructor
 // est rendu en HTML, on insère donc une vraie ancre <a href> plutôt qu'un texte
 // noir non cliquable.
-const TEXTE_LIEN_CR = 'Compte rendu de visite'
+const TEXTE_LIEN_CR = 'Cliquez ici pour visualiser votre compte rendu'
 
 // Lit l'URL stable du PDF de compte rendu d'un chantier dans rapports.pdf_url.
 // Renvoie null si le rapport n'existe pas encore ou si aucun PDF n'a ete persiste
@@ -285,7 +285,14 @@ export function ajouterLienCompteRendu(
   if (!u) return description ?? ''
   const base = (description ?? '').trimEnd()
   if (base.includes(`href="${u}"`)) return base
-  const lienHtml = `<a href="${u}">${TEXTE_LIEN_CR}</a>`
+  // Lot 6.3 : lien bleu + gras, ouverture nouvel onglet. Markup combine
+  // « ceinture et bretelles » : couleur via style inline (levier principal) et
+  // gras via la balise semantique <strong> (repli si le style est ignore par le
+  // moteur PDF de Costructor). target/rel pour le rendu HTML cote interface ; en
+  // PDF un lien s'ouvre de toute facon dans le navigateur.
+  const lienHtml =
+    `<a href="${u}" target="_blank" rel="noopener" ` +
+    `style="color:#2563eb;font-weight:700;"><strong>${TEXTE_LIEN_CR}</strong></a>`
   return base ? `${base}<br><br>${lienHtml}` : lienHtml
 }
 
