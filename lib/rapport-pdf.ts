@@ -46,7 +46,7 @@ function addFooter(doc: jsPDF) {
     doc.setPage(i)
     doc.setFontSize(7)
     doc.setTextColor(160, 160, 160)
-    doc.text('Rapport généré par ATG, propulsé par IONNYX', PW / 2, PH - 10, { align: 'center' })
+    doc.text('Rapport généré par ATG', PW / 2, PH - 10, { align: 'center' })
     doc.text(`${i} / ${n}`, PW - M, PH - 10, { align: 'right' })
   }
 }
