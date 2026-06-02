@@ -168,6 +168,8 @@ export interface CostructorQuotePayload {
   lines: CostructorQuoteLine[]
   // Nom/titre parlant du devis, construit depuis chantier.objet_travaux (lot 6.1).
   name?: string
+  // Date de la visite technique prealable, format AAAA-MM-JJ (lot 6.2).
+  preVisitAt?: string
 }
 
 export interface CostructorQuoteResponse {

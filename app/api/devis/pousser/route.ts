@@ -101,6 +101,10 @@ export async function POST(request: Request) {
 
     // Lot 6.1 : nom parlant depuis l'objet des travaux dicte.
     const name = construireNomDevis(chantier.objet_travaux, chantier.client_nom)
+    // Lot 6.2 : visite prealable = date de la visite technique, tronquee au jour.
+    const preVisitAt = chantier.date_visite
+      ? chantier.date_visite.slice(0, 10)
+      : undefined
 
     const payload = construirePayloadDevis({
       contactId,
@@ -108,6 +112,7 @@ export async function POST(request: Request) {
       description,
       tvaTaux,
       name,
+      preVisitAt,
     })
 
     try {

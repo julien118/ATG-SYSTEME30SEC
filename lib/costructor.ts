@@ -409,6 +409,7 @@ export function construirePayloadDevis(args: {
   tvaTaux?: number
   // Nom/titre parlant du devis (lot 6.1) et date de visite prealable (lot 6.2).
   name?: string
+  preVisitAt?: string
 }): CostructorQuotePayload {
   const lines: CostructorQuotePayload['lines'] = []
   const tvaTaux = args.tvaTaux ?? 10
@@ -469,5 +470,6 @@ export function construirePayloadDevis(args: {
     lines,
     // Champs optionnels : on ne les pose que s'ils sont renseignes (lots 6.1/6.2).
     ...(args.name?.trim() ? { name: args.name.trim() } : {}),
+    ...(args.preVisitAt ? { preVisitAt: args.preVisitAt } : {}),
   }
 }
