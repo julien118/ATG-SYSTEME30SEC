@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { construireRapportPdf } from '@/lib/rapport-pdf'
+import { nomFichierRapport } from '@/lib/utils'
 import type { RapportContenu } from '@/lib/types'
 
 // Mode démo ATG : pas de check d'auth.
@@ -30,10 +31,19 @@ async function buildPdf(chantierId: string): Promise<NextResponse> {
 
   if (!rapport) return NextResponse.json({ error: 'No report found' }, { status: 404 })
 
+  // Date de visite du chantier : sert au nom de fichier (lot 3.4, date de la
+  // visite plutot que la date du jour).
+  const { data: chantier } = await supabase
+    .from('chantiers')
+    .select('date_visite')
+    .eq('id', chantierId)
+    .single()
+  const dateVisiteIso =
+    (chantier as { date_visite: string | null } | null)?.date_visite ?? null
+
   const c = rapport.contenu_json as RapportContenu
   const pdfBuffer = await construireRapportPdf(c)
-  const nom = c.client.nom.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()
-  const filename = `rapport-visite-${nom}-${new Date().toISOString().slice(0, 10)}.pdf`
+  const filename = nomFichierRapport(c.client.nom, dateVisiteIso)
 
   return new NextResponse(pdfBuffer, {
     headers: {

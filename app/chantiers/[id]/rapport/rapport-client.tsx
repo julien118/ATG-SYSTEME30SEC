@@ -6,13 +6,14 @@ import { createClient } from '@/lib/supabase/client'
 import ReportView from '@/components/ReportView'
 import Spinner from '@/components/Spinner'
 import { useToast } from '@/components/ToastProvider'
-import { fetchWithTimeout, nettoyerRapportContenu } from '@/lib/utils'
+import { fetchWithTimeout, nettoyerRapportContenu, nomFichierRapport } from '@/lib/utils'
 import type { RapportContenu } from '@/lib/types'
 
 interface RapportClientProps {
   chantierId: string
   initialRapport: RapportContenu | null
   heureVisite?: string | null
+  dateVisiteIso?: string | null
 }
 
 const PROGRESS_STEPS = [
@@ -31,7 +32,7 @@ const DEVIS_PROGRESS_STEPS = [
   'Mise en page du dossier technique...',
 ]
 
-export default function RapportClient({ chantierId, initialRapport, heureVisite }: RapportClientProps) {
+export default function RapportClient({ chantierId, initialRapport, heureVisite, dateVisiteIso }: RapportClientProps) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -338,7 +339,7 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite 
         </div>
         <a
           href={`/api/export-pdf?chantierId=${chantierId}`}
-          download={`rapport-visite-${chantierId.slice(0, 8)}.pdf`}
+          download={nomFichierRapport(rapport.client.nom, dateVisiteIso)}
           className="btn-tertiary w-full text-sm py-2.5 flex items-center justify-center gap-2"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

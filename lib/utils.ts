@@ -84,6 +84,34 @@ export function formatDateFr(dateStr: string | null) {
   })
 }
 
+// Nom de fichier PDF propre du compte rendu (lot 3.4) :
+// "compte-rendu-<nom-kebab>-<AAAA-MM-JJ>.pdf". Le nom du destinataire est mis en
+// kebab-case (accents retires, non-alphanumeriques regroupes en tirets) et la date
+// est celle de la VISITE (fuseau Europe/Paris pour rester au bon jour).
+export function nomFichierRapport(
+  nom: string | null | undefined,
+  dateVisiteIso: string | null | undefined,
+): string {
+  const nomKebab = (nom ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  // fr-CA produit directement AAAA-MM-JJ.
+  const jour = dateVisiteIso
+    ? new Intl.DateTimeFormat('fr-CA', {
+        timeZone: 'Europe/Paris',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date(dateVisiteIso))
+    : ''
+  // Toujours prefixe "compte-rendu", puis le nom puis la date s'ils existent
+  // (evite un "compte-rendu-compte-rendu" quand le nom est vide).
+  return ['compte-rendu', nomKebab, jour].filter(Boolean).join('-') + '.pdf'
+}
+
 // =============================================================
 // Nettoyage du gras Markdown dans le compte rendu (lot 1.5)
 // =============================================================

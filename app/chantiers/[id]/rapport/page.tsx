@@ -64,6 +64,7 @@ export default async function RapportPage({ params }: { params: { id: string } }
         chantierId={params.id}
         initialRapport={(rapport?.contenu_json as RapportContenu) ?? null}
         heureVisite={heureVisite}
+        dateVisiteIso={(chantier as { date_visite: string | null }).date_visite}
       />
     </div>
   )
