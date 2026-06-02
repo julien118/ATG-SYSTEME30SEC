@@ -324,6 +324,20 @@ export function calculerTotalHT(sections: SectionDevis[]): number {
   return Math.round(total * 100) / 100
 }
 
+// Nom/titre parlant du devis (lot 6.1), construit de facon deterministe depuis
+// l'objet des travaux dicte (chantier.objet_travaux), dans l'esprit des intitules
+// d'Olivier (ex : « Travaux d'isolation exterieure cuisine »). Premiere lettre en
+// capitale, espaces normalises. Repli sur le client si l'objet est vide.
+export function construireNomDevis(
+  objetTravaux: string | null | undefined,
+  clientNom: string | null | undefined,
+): string {
+  const objet = (objetTravaux ?? '').replace(/\s+/g, ' ').trim()
+  if (objet) return objet.charAt(0).toUpperCase() + objet.slice(1)
+  const client = (clientNom ?? '').trim()
+  return client ? `Ravalement facade ${client}` : 'Ravalement facade'
+}
+
 // Total TTC depuis le taux de TVA en points de pourcentage (defaut 10 = 10 %).
 // Le taux est choisi par le pro sur l'ecran recap (lot 5.2).
 export function calculerTotalTTC(totalHT: number, tvaTaux = 10): number {
@@ -393,6 +407,8 @@ export function construirePayloadDevis(args: {
   // Taux de TVA en points de pourcentage (defaut 10). Pose un taxRate sur chaque
   // ligne produit (lot 5.2). 0 => aucune taxe forcee (defaut du compte).
   tvaTaux?: number
+  // Nom/titre parlant du devis (lot 6.1) et date de visite prealable (lot 6.2).
+  name?: string
 }): CostructorQuotePayload {
   const lines: CostructorQuotePayload['lines'] = []
   const tvaTaux = args.tvaTaux ?? 10
@@ -451,5 +467,7 @@ export function construirePayloadDevis(args: {
     customer: args.contactId,
     description: args.description,
     lines,
+    // Champs optionnels : on ne les pose que s'ils sont renseignes (lots 6.1/6.2).
+    ...(args.name?.trim() ? { name: args.name.trim() } : {}),
   }
 }

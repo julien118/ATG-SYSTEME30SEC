@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server'
 import {
   calculerTotalHT,
   calculerTotalTTC,
+  construireNomDevis,
   construirePayloadDevis,
   pousserDevis,
   supprimerDevis,
@@ -86,9 +87,10 @@ export async function POST(request: Request) {
       await supprimerDevis(devis.costructor_devis_id)
     }
 
+    // Lot 6.1 : plus de mention « Généré depuis Le Système 30 Secondes par ATG ».
     const descriptionBase = `Ravalement façade ${chantier.client_nom}${
       chantier.client_adresse ? ', ' + chantier.client_adresse : ''
-    }.\n\nGénéré depuis Le Système 30 Secondes par ATG.`
+    }.`
 
     // Étape 2 (Phase G) : on intègre le lien du PDF de compte rendu du chantier
     // dans la description (workaround R2). Sans PDF persisté, description inchangée.
@@ -97,11 +99,15 @@ export async function POST(request: Request) {
       chantier.id,
     )
 
+    // Lot 6.1 : nom parlant depuis l'objet des travaux dicte.
+    const name = construireNomDevis(chantier.objet_travaux, chantier.client_nom)
+
     const payload = construirePayloadDevis({
       contactId,
       sections,
       description,
       tvaTaux,
+      name,
     })
 
     try {

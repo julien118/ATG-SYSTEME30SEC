@@ -166,6 +166,8 @@ export interface CostructorQuotePayload {
   customer: string // ID contact (cnt_xxx)
   description: string
   lines: CostructorQuoteLine[]
+  // Nom/titre parlant du devis, construit depuis chantier.objet_travaux (lot 6.1).
+  name?: string
 }
 
 export interface CostructorQuoteResponse {
