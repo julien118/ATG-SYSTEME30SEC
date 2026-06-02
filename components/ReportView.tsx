@@ -6,9 +6,10 @@ import type { RapportContenu } from '@/lib/types'
 interface ReportViewProps {
   contenu: RapportContenu
   onUpdate: (updated: RapportContenu) => void
+  heureVisite?: string | null
 }
 
-export default function ReportView({ contenu, onUpdate }: ReportViewProps) {
+export default function ReportView({ contenu, onUpdate, heureVisite }: ReportViewProps) {
   const [fullscreenPhoto, setFullscreenPhoto] = useState<string | null>(null)
   const [editingObs, setEditingObs] = useState<{ index: number; field: 'description' } | null>(null)
   const [editText, setEditText] = useState('')
@@ -47,7 +48,13 @@ export default function ReportView({ contenu, onUpdate }: ReportViewProps) {
               <p><span className="text-gray-400">Tél :</span> <span className="text-foreground">{contenu.client.telephone}</span></p>
             )}
             {contenu.client.date_visite && (
-              <p><span className="text-gray-400">Visite :</span> <span className="text-foreground">{contenu.client.date_visite}</span></p>
+              <p>
+                <span className="text-gray-400">Visite :</span>{' '}
+                <span className="text-foreground">
+                  {contenu.client.date_visite}
+                  {heureVisite ? ` à ${heureVisite}` : ''}
+                </span>
+              </p>
             )}
           </div>
         </section>
@@ -71,13 +78,9 @@ export default function ReportView({ contenu, onUpdate }: ReportViewProps) {
                 <p
                   onClick={() => startEdit(i)}
                   className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap cursor-pointer hover:bg-input-focus rounded-lg -mx-2 px-2 py-1 transition-colors"
-                  dangerouslySetInnerHTML={{
-                    __html: obs.description.replace(
-                      /\*\*(.*?)\*\*/g,
-                      '<strong class="text-foreground">$1</strong>'
-                    ),
-                  }}
-                />
+                >
+                  {obs.description}
+                </p>
               )}
             </div>
 
@@ -121,14 +124,14 @@ export default function ReportView({ contenu, onUpdate }: ReportViewProps) {
         {contenu.acces_chantier && (
           <section className="bg-white rounded-xl border border-border p-4">
             <h3 className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">Accès chantier</h3>
-            <p className="text-sm text-gray-600">{contenu.acces_chantier}</p>
+            <p className="text-sm text-gray-600 whitespace-pre-wrap">{contenu.acces_chantier}</p>
           </section>
         )}
 
         {contenu.duree_estimee && (
           <section className="bg-white rounded-xl border border-border p-4">
             <h3 className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">Durée estimée</h3>
-            <p className="text-sm text-gray-600">{contenu.duree_estimee}</p>
+            <p className="text-sm text-gray-600 whitespace-pre-wrap">{contenu.duree_estimee}</p>
           </section>
         )}
 

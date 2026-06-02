@@ -6,12 +6,13 @@ import { createClient } from '@/lib/supabase/client'
 import ReportView from '@/components/ReportView'
 import Spinner from '@/components/Spinner'
 import { useToast } from '@/components/ToastProvider'
-import { fetchWithTimeout } from '@/lib/utils'
+import { fetchWithTimeout, nettoyerRapportContenu } from '@/lib/utils'
 import type { RapportContenu } from '@/lib/types'
 
 interface RapportClientProps {
   chantierId: string
   initialRapport: RapportContenu | null
+  heureVisite?: string | null
 }
 
 const PROGRESS_STEPS = [
@@ -30,7 +31,7 @@ const DEVIS_PROGRESS_STEPS = [
   'Mise en page du dossier technique...',
 ]
 
-export default function RapportClient({ chantierId, initialRapport }: RapportClientProps) {
+export default function RapportClient({ chantierId, initialRapport, heureVisite }: RapportClientProps) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -38,7 +39,6 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
   const [generating, setGenerating] = useState(false)
   const [progressStep, setProgressStep] = useState(0)
   const [error, setError] = useState('')
-  const [viewingPdf, setViewingPdf] = useState(false)
   const [preparingDevis, setPreparingDevis] = useState(false)
   const [devisProgressStep, setDevisProgressStep] = useState(0)
   const toast = useToast()
@@ -143,17 +143,21 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
   }
 
   const handleUpdate = async (updated: RapportContenu) => {
-    setRapport(updated)
+    // Garde-fou (lot 1.5) : on nettoie aussi a la sauvegarde d'une edition, au
+    // cas ou un ** se glisserait (collage, ancien texte). Texte propre partout.
+    const propre = nettoyerRapportContenu(updated)
+    setRapport(propre)
     await supabase
       .from('rapports')
-      .update({ contenu_json: updated })
+      .update({ contenu_json: propre })
       .eq('chantier_id', chantierId)
     toast.show('Rapport sauvegardé', 'success')
   }
 
+  // Ouvre le PDF du compte rendu dans un NOUVEL onglet (la page reste en place,
+  // donc aucun etat de chargement a bloquer). rel-equivalent via noopener.
   const handleViewPdf = () => {
-    setViewingPdf(true)
-    window.location.href = `/api/export-pdf?chantierId=${chantierId}`
+    window.open(`/api/export-pdf?chantierId=${chantierId}`, '_blank', 'noopener,noreferrer')
   }
 
   // ---- GENERATING VIEW ----
@@ -314,26 +318,22 @@ export default function RapportClient({ chantierId, initialRapport }: RapportCli
           </button>
         </div>
 
-        <ReportView contenu={rapport} onUpdate={handleUpdate} />
+        <ReportView contenu={rapport} onUpdate={handleUpdate} heureVisite={heureVisite} />
       </div>
 
       {/* Action bar */}
       <div className="flex-shrink-0 bg-white border-t border-border px-5 py-4 pb-safe space-y-2">
         <div className="flex gap-3">
-          <button onClick={handleRegenerate} disabled={generating || viewingPdf} className="btn-tertiary flex-1 text-sm py-3 flex items-center justify-center gap-1.5">
+          <button onClick={handleRegenerate} disabled={generating} className="btn-tertiary flex-1 text-sm py-3 flex items-center justify-center gap-1.5">
             {generating && <Spinner className="h-4 w-4" />}
             {generating ? 'Régénération...' : 'Régénérer'}
           </button>
-          <button onClick={handleViewPdf} disabled={generating || viewingPdf} className="btn-primary flex-1 text-sm py-3 flex items-center justify-center gap-2">
-            {viewingPdf ? (
-              <Spinner className="h-4 w-4" />
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-              </svg>
-            )}
-            {viewingPdf ? 'Chargement...' : 'Voir mon rapport'}
+          <button onClick={handleViewPdf} disabled={generating} className="btn-primary flex-1 text-sm py-3 flex items-center justify-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+            Voir mon rapport
           </button>
         </div>
         <a

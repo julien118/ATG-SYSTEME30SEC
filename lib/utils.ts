@@ -1,3 +1,5 @@
+import type { RapportContenu } from './types'
+
 /**
  * Compress image via Canvas API
  * Max 1920px width, JPEG quality 0.8, no upscaling
@@ -80,6 +82,42 @@ export function formatDateFr(dateStr: string | null) {
     month: 'long',
     year: 'numeric',
   })
+}
+
+// =============================================================
+// Nettoyage du gras Markdown dans le compte rendu (lot 1.5)
+// =============================================================
+// Garde-fou PRUDENT : retire uniquement les marques de gras Markdown a base de
+// DOUBLE asterisque (**texte** -> texte, et tout ** orphelin restant). On NE
+// touche PAS aux asterisques SIMPLES (* isole) qui peuvent avoir un autre sens
+// (multiplication, renvoi, etc.) ni au reste du texte/ponctuation.
+
+export function nettoyerGrasMarkdown(texte: string | null | undefined): string {
+  return (texte ?? '')
+    .replace(/\*\*(.+?)\*\*/g, '$1') // **gras** -> gras (contenu conserve)
+    .replace(/\*\*/g, '') // ** orphelin eventuel -> supprime (jamais legitime en prose)
+}
+
+// Applique le nettoyage a tous les champs texte REDIGES PAR L'IA d'un compte
+// rendu (titres, descriptions, points de vigilance, legendes, sections). Les
+// donnees client sont recopiees telles quelles, on n'y touche pas.
+export function nettoyerRapportContenu(contenu: RapportContenu): RapportContenu {
+  return {
+    ...contenu,
+    observations: (contenu.observations ?? []).map((obs) => ({
+      ...obs,
+      titre: nettoyerGrasMarkdown(obs.titre),
+      description: nettoyerGrasMarkdown(obs.description),
+      points_vigilance: (obs.points_vigilance ?? []).map(nettoyerGrasMarkdown),
+      photos: (obs.photos ?? []).map((p) => ({
+        ...p,
+        legende: nettoyerGrasMarkdown(p.legende),
+      })),
+    })),
+    acces_chantier: nettoyerGrasMarkdown(contenu.acces_chantier),
+    duree_estimee: nettoyerGrasMarkdown(contenu.duree_estimee),
+    notes: nettoyerGrasMarkdown(contenu.notes),
+  }
 }
 
 /**

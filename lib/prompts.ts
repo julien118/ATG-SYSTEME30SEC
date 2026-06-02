@@ -18,7 +18,8 @@ RÈGLES DE CORRÉLATION PHOTO-OBSERVATION :
 
 RÈGLES DE RÉDACTION :
 - Légendes de photos : TOUJOURS descriptives et concrètes. JAMAIS "Vue du chantier", "Photo du mur", etc. La légende doit dire CE QU'ON VOIT de spécifique.
-- Mesures et dimensions : toujours en **gras markdown** (ex: **5,36 m**, **parpaing de 20**)
+- TEXTE BRUT UNIQUEMENT : n'utilise JAMAIS de markdown ni d'astérisques (pas de **gras**, pas de *italique*, pas de #titres). Le texte doit être propre, sans aucun caractère de mise en forme.
+- Mesures et dimensions : exprime-les clairement AVEC leur unité, bien intégrées dans la phrase pour qu'elles ressortent naturellement (ex: "une fissure de 5,36 m de long", "des parpaings de 20 cm"). Pas de mise en gras, c'est la formulation qui les met en valeur.
 - Vocabulaire technique : utiliser le vocabulaire adapté au corps de métier détecté
 - Ton : professionnel mais accessible, phrases complètes
 - Points de vigilance : identifier les risques, contraintes et précautions pertinentes
@@ -37,8 +38,8 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans aucun texte avant ou après,
   },
   "observations": [
     {
-      "titre": "string — titre court et descriptif de la zone/élément observé",
-      "description": "string — description détaillée avec mesures en **gras**",
+      "titre": "string — titre court et descriptif de la zone/élément observé, texte brut",
+      "description": "string — description détaillée en texte brut, sans markdown ni astérisques",
       "points_vigilance": ["string — chaque point de vigilance identifié"],
       "photos": [
         {

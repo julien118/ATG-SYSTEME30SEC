@@ -5,6 +5,7 @@ import { anthropic } from '@/lib/anthropic'
 import { SYSTEM_PROMPT, buildUserPrompt } from '@/lib/prompts'
 import { ATG_USER_ID } from '@/lib/atg'
 import { persistRapportPdf } from '@/lib/rapport-pdf'
+import { nettoyerRapportContenu } from '@/lib/utils'
 import type { Chantier, CaptureItem, RapportContenu } from '@/lib/types'
 
 // Mode démo ATG : pas de check d'auth, pas de limite "2 rapports".
@@ -105,16 +106,22 @@ export async function POST(request: Request) {
     })
   }
 
+  // Garde-fou (lot 1.5) : on retire tout gras Markdown (**) que l'IA aurait pu
+  // glisser, AVANT de stocker. Le texte stocke reste donc propre, en lecture
+  // comme en edition. Prudent : ne touche qu'aux marques de gras a double
+  // asterisque, pas au reste du texte.
+  const rapportNettoye = nettoyerRapportContenu(rapport)
+
   // Upsert rapport
   if (isRegeneration) {
     await supabase
       .from('rapports')
-      .update({ contenu_json: rapport, updated_at: new Date().toISOString() })
+      .update({ contenu_json: rapportNettoye, updated_at: new Date().toISOString() })
       .eq('chantier_id', chantierId)
   } else {
     await supabase
       .from('rapports')
-      .insert({ chantier_id: chantierId, contenu_json: rapport })
+      .insert({ chantier_id: chantierId, contenu_json: rapportNettoye })
   }
 
   // Le statut "Généré" (rapport_genere) n'est PLUS posé ici : il se déclenche
@@ -133,7 +140,7 @@ export async function POST(request: Request) {
     console.error('[api/generate-report] persistRapportPdf:', (e as Error).message)
   }
 
-  return NextResponse.json({ rapport, pdf_url: pdfUrl })
+  return NextResponse.json({ rapport: rapportNettoye, pdf_url: pdfUrl })
   } catch {
     return NextResponse.json({ error: 'Report generation failed' }, { status: 500 })
   }
