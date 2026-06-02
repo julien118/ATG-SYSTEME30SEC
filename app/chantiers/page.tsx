@@ -48,7 +48,17 @@ export default async function ChantiersPage() {
 
       {/* Footer */}
       <footer className="px-5 pb-6 max-w-2xl mx-auto">
-        <p className="text-xs text-gray-400">Propulsé par IONNYX</p>
+        <p className="text-xs text-gray-400 text-center">
+          Propulsé par{' '}
+          <a
+            href="https://ionnyx.fr"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-primary transition-colors"
+          >
+            IONNYX
+          </a>
+        </p>
       </footer>
     </div>
   )
