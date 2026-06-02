@@ -115,11 +115,11 @@ export async function construireRapportPdf(c: RapportContenu): Promise<ArrayBuff
 
   let y = BAND_H + 12
 
-  // Informations client
+  // Coordonnees (lot 3.2 : libelle neutre, sans le mot "client" remis au client).
   doc.setFontSize(12)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...PRIMARY)
-  doc.text('INFORMATIONS CLIENT', M, y)
+  doc.text('COORDONNÉES', M, y)
   // Filet d'accent sous le titre de section pour la hierarchie visuelle.
   doc.setDrawColor(...PRIMARY)
   doc.setLineWidth(0.6)

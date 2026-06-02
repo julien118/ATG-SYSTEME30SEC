@@ -37,7 +37,7 @@ export default function ReportView({ contenu, onUpdate, heureVisite }: ReportVie
         {/* Client info */}
         <section className="bg-white rounded-xl border border-border p-4">
           <h3 className="text-xs font-semibold text-primary uppercase tracking-wider mb-3">
-            Informations client
+            Coordonnées
           </h3>
           <div className="space-y-1.5 text-sm">
             <p><span className="text-gray-400">Nom :</span> <span className="text-foreground font-medium">{contenu.client.nom}</span></p>

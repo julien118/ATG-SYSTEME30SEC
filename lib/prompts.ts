@@ -22,6 +22,8 @@ RÈGLES DE RÉDACTION :
 - Mesures et dimensions : exprime-les clairement AVEC leur unité, bien intégrées dans la phrase pour qu'elles ressortent naturellement (ex: "une fissure de 5,36 m de long", "des parpaings de 20 cm"). Pas de mise en gras, c'est la formulation qui les met en valeur.
 - Vocabulaire technique : utiliser le vocabulaire adapté au corps de métier détecté
 - Ton : professionnel mais accessible, phrases complètes
+- N'EMPLOIE JAMAIS le mot "client" dans le texte rédigé (titres, descriptions, légendes, points de vigilance, notes). Le compte rendu est REMIS AU CLIENT lui-même : tourne donc les phrases neutrement. Écris "teinte souhaitée : sable" et NON "teinte souhaitée par le client : sable" ; "accès par le portail de gauche" et NON "le client signale un accès...".
+- ORTHOGRAPHE, GRAMMAIRE, CONJUGAISON et PONCTUATION irréprochables. Le texte vient d'une dictée vocale : corrige les approximations, les fautes et la ponctuation manquante pour rendre un document soigné, prêt à être transmis tel quel au destinataire.
 - Points de vigilance : identifier les risques, contraintes et précautions pertinentes
 - Données client : recopier à l'IDENTIQUE depuis les informations fournies, ne rien inventer
 
