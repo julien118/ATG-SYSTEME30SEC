@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import LogoLink from '@/components/LogoLink'
 import BoutonPousser from './bouton-pousser'
+import BlocTotaux from './bloc-totaux'
 import { ATG_USER_ID } from '@/lib/atg'
 import type { Chantier, Devis, SectionDevis } from '@/lib/types'
 
@@ -69,8 +70,6 @@ export default async function RecapDevisPage({
     }
   }
   totalHT = Math.round(totalHT * 100) / 100
-  const tva = Math.round(totalHT * 0.1 * 100) / 100
-  const totalTTC = Math.round((totalHT + tva) * 100) / 100
 
   const dejaPouse =
     devis.statut === 'pousse_costructor' && devis.costructor_devis_url
@@ -205,22 +204,13 @@ export default async function RecapDevisPage({
           })}
         </div>
 
-        {/* Totaux à droite, style Costructor */}
+        {/* Totaux + taux de TVA ajustable (lot 5.2), a droite, style Costructor */}
         <div className="mx-4 mt-6 flex justify-end">
-          <div className="w-full sm:w-80 rounded-xl border border-border bg-white overflow-hidden">
-            <div className="flex justify-between px-4 py-3 text-sm border-b border-border">
-              <span className="text-gray-500">Total HT</span>
-              <span className="font-semibold tabular-nums">{formatEUR(totalHT)}</span>
-            </div>
-            <div className="flex justify-between px-4 py-3 text-sm border-b border-border">
-              <span className="text-gray-500">TVA 10%</span>
-              <span className="tabular-nums text-gray-700">{formatEUR(tva)}</span>
-            </div>
-            <div className="flex justify-between px-4 py-3 text-base bg-primary/5">
-              <span className="font-semibold text-foreground">Total TTC</span>
-              <span className="font-bold text-primary tabular-nums">{formatEUR(totalTTC)}</span>
-            </div>
-          </div>
+          <BlocTotaux
+            devisId={devis.id}
+            totalHT={totalHT}
+            tvaTauxInitial={devis.tva_taux ?? 10}
+          />
         </div>
       </main>
 

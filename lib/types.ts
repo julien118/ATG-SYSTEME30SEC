@@ -119,6 +119,9 @@ export interface Devis {
   sections_finales: SectionDevis[] | null
   total_ht: number | null
   total_ttc: number | null
+  // Taux de TVA en points de pourcentage (10 = 10 %). Defaut 10. Ajustable par le
+  // pro sur l'ecran recap avant l'envoi, applique au push et aux totaux (lot 5.2).
+  tva_taux: number | null
   costructor_devis_id: string | null
   costructor_devis_url: string | null
   pousse_le: string | null
@@ -154,6 +157,9 @@ export type CostructorQuoteLine =
       quantity: number
       sellPrice: number // EN CENTIMES
       unit: string // ID unité (unit_xxx)
+      // TVA de la ligne en POINTS DE BASE (1000 = 10 %). Calcule depuis le taux
+      // global choisi (lot 5.2) : independant des ids de taxe du compte.
+      taxRate?: number
     }
 
 export interface CostructorQuotePayload {

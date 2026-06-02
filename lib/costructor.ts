@@ -324,9 +324,16 @@ export function calculerTotalHT(sections: SectionDevis[]): number {
   return Math.round(total * 100) / 100
 }
 
-// Total TTC (TVA 10%).
-export function calculerTotalTTC(totalHT: number): number {
-  return Math.round(totalHT * 1.1 * 100) / 100
+// Total TTC depuis le taux de TVA en points de pourcentage (defaut 10 = 10 %).
+// Le taux est choisi par le pro sur l'ecran recap (lot 5.2).
+export function calculerTotalTTC(totalHT: number, tvaTaux = 10): number {
+  return Math.round(totalHT * (1 + tvaTaux / 100) * 100) / 100
+}
+
+// Convertit un taux en points de pourcentage (10) vers les points de base
+// attendus par Costructor sur une ligne (1000 = 10 %).
+export function tauxVersPointsDeBase(tvaTaux: number): number {
+  return Math.round(tvaTaux * 100)
 }
 
 // Construit la ligne `product` Costructor à partir d'un article du devis.
@@ -334,6 +341,7 @@ export function calculerTotalTTC(totalHT: number): number {
 // une section transversale ou depuis une section façade.
 function ligneProduit(
   article: SectionDevis['articles'][number],
+  taxRate?: number,
 ): CostructorQuotePayload['lines'][number] {
   // Description Costructor : libellé en titre HTML + description technique en dessous.
   // L'éditeur Costructor préserve les balises HTML ; les sauts \n bruts sont
@@ -358,6 +366,9 @@ function ligneProduit(
     quantity: article.quantite as number, // garanti non-null par le caller
     sellPrice: eurosVersCentimes(article.prix_vente),
     unit: uniteVersCostructorId(article.unite),
+    // TVA en points de base, posee uniquement si un taux > 0 est fourni (sinon on
+    // laisse Costructor appliquer le defaut du compte, comportement historique).
+    ...(taxRate && taxRate > 0 ? { taxRate } : {}),
   }
 }
 
@@ -379,8 +390,13 @@ export function construirePayloadDevis(args: {
   contactId: string
   sections: SectionDevis[]
   description: string
+  // Taux de TVA en points de pourcentage (defaut 10). Pose un taxRate sur chaque
+  // ligne produit (lot 5.2). 0 => aucune taxe forcee (defaut du compte).
+  tvaTaux?: number
 }): CostructorQuotePayload {
   const lines: CostructorQuotePayload['lines'] = []
+  const tvaTaux = args.tvaTaux ?? 10
+  const taxRate = tauxVersPointsDeBase(tvaTaux)
 
   // 1) En-tête QUALIFICATIONS ATG.
   const entete = STRUCTURE_DEVIS_ATG.entete
@@ -412,7 +428,7 @@ export function construirePayloadDevis(args: {
     )
     lines.push({ type: 'text', description: transv.titre })
     for (const { article } of captures) {
-      lines.push(ligneProduit(article))
+      lines.push(ligneProduit(article, taxRate))
     }
   }
 
@@ -427,7 +443,7 @@ export function construirePayloadDevis(args: {
     if (restants.length === 0) continue
     lines.push({ type: 'text', description: section.nom })
     for (const { article } of restants) {
-      lines.push(ligneProduit(article))
+      lines.push(ligneProduit(article, taxRate))
     }
   }
 

@@ -74,8 +74,10 @@ export async function POST(request: Request) {
       `[api/devis/pousser] contact ${matchContact.matchType} : ${contactId} pour "${chantier.client_nom}"`,
     )
 
+    // Taux de TVA choisi par le pro sur l'ecran recap (lot 5.2). Defaut 10 %.
+    const tvaTaux = devis.tva_taux ?? 10
     const total_ht = calculerTotalHT(sections)
-    const total_ttc = calculerTotalTTC(total_ht)
+    const total_ttc = calculerTotalTTC(total_ht, tvaTaux)
 
     // Idempotence : si un devis Costructor existe déjà pour cette ligne,
     // on le supprime avant d'en créer un nouveau. Évite la pollution de
@@ -99,6 +101,7 @@ export async function POST(request: Request) {
       contactId,
       sections,
       description,
+      tvaTaux,
     })
 
     try {
