@@ -353,6 +353,22 @@ export function ajouterLienCompteRendu(
   return base ? `${base}<br><br>${lienHtml}` : lienHtml
 }
 
+// Base URL publique de l'app pour les liens courts (lot 3B), reglee via
+// NEXT_PUBLIC_SITE_URL (.env.local en local, variables d'env Vercel en deploiement).
+// Tiret final retire. Chaine vide si la variable n'est pas definie.
+function baseUrlApp(): string {
+  return (process.env.NEXT_PUBLIC_SITE_URL ?? '').trim().replace(/\/+$/, '')
+}
+
+// Lien court du compte rendu (lot 3B) : "<base>/r/<chantierId>", qui redirige vers
+// le PDF (voir app/r/[chantierId]/route.ts). N'expose QUE l'identifiant du chantier,
+// rien de sensible. Renvoie null si la base n'est pas configuree : l'appelant
+// retombe alors sur l'URL Supabase longue, donc rien ne casse.
+function lienCourtCompteRendu(chantierId: string): string | null {
+  const base = baseUrlApp()
+  return base ? `${base}/r/${chantierId}` : null
+}
+
 // Compose la description finale d'un devis en y integrant le lien du compte rendu
 // du chantier, si un PDF a ete persiste. Sinon, renvoie la description de base
 // inchangee. C'est le point d'entree a appeler au moment du push.
@@ -361,6 +377,12 @@ export async function composerDescriptionAvecRapport(
   chantierId: string | null | undefined,
 ): Promise<string> {
   if (!chantierId) return description ?? ''
-  const url = await recupererUrlRapportPdf(chantierId)
-  return ajouterLienCompteRendu(description, url)
+  // On n'injecte le lien que si un PDF a bien ete persiste pour ce chantier
+  // (sinon pas de lien casse vers une page 404).
+  const pdfUrl = await recupererUrlRapportPdf(chantierId)
+  if (!pdfUrl) return description ?? ''
+  // Lot 3B : on prefere le lien court "<base>/r/<chantierId>" ; repli sur l'URL
+  // Supabase longue si NEXT_PUBLIC_SITE_URL n'est pas defini.
+  const lien = lienCourtCompteRendu(chantierId) ?? pdfUrl
+  return ajouterLienCompteRendu(description, lien)
 }
