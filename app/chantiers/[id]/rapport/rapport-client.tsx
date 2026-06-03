@@ -155,10 +155,17 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
     toast.show('Rapport sauvegardé', 'success')
   }
 
+  // URL du PDF avec le nom de fichier propre (compte-rendu-nom-date.pdf) porte
+  // dans le DERNIER SEGMENT de l'URL : c'est ce que le navigateur reprend pour
+  // nommer le PDF a la visualisation et au telechargement.
+  const urlPdfRapport = (r: RapportContenu) =>
+    `/api/export-pdf/${chantierId}/${encodeURIComponent(nomFichierRapport(r.client.nom, dateVisiteIso))}`
+
   // Ouvre le PDF du compte rendu dans un NOUVEL onglet (la page reste en place,
   // donc aucun etat de chargement a bloquer). rel-equivalent via noopener.
   const handleViewPdf = () => {
-    window.open(`/api/export-pdf?chantierId=${chantierId}`, '_blank', 'noopener,noreferrer')
+    if (!rapport) return
+    window.open(urlPdfRapport(rapport), '_blank', 'noopener,noreferrer')
   }
 
   // ---- GENERATING VIEW ----
@@ -338,7 +345,7 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
           </button>
         </div>
         <a
-          href={`/api/export-pdf?chantierId=${chantierId}`}
+          href={urlPdfRapport(rapport)}
           download={nomFichierRapport(rapport.client.nom, dateVisiteIso)}
           className="btn-tertiary w-full text-sm py-2.5 flex items-center justify-center gap-2"
         >
