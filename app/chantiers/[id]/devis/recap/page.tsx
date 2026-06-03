@@ -74,8 +74,9 @@ export default async function RecapDevisPage({
   const dejaPouse =
     devis.statut === 'pousse_costructor' && devis.costructor_devis_url
 
-  // Description en tête du devis (texte libre Costructor-like).
-  const descriptionDevis = `Ravalement façade — ${chantier.client_nom}${
+  // Description en tête du devis (texte libre Costructor-like). Separateur tiret
+  // simple entre l'objet et le client (pas de tiret cadratin).
+  const descriptionDevis = `Ravalement façade - ${chantier.client_nom}${
     chantier.client_adresse ? `, ${chantier.client_adresse}` : ''
   }`
 
