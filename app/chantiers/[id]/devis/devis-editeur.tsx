@@ -278,11 +278,50 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
     setRechercheKey(null)
   }
 
-  // Commit 1 : la selection ne remplace pas encore (ce sera le commit 2). On
-  // ferme juste la recherche et on logue l'article choisi pour validation.
-  function choisirRemplacement(sIdx: number, aIdx: number, article: ArticleRemplacable) {
-    console.log('[remplacement] article choisi (non applique au commit 1)', { sIdx, aIdx, article })
+  // Remplace l'article cible par l'article choisi dans la bibliotheque : on
+  // reprend libelle, unite et prix unitaire du NOUVEL article, on CONSERVE la
+  // quantite saisie, et la description retombe sur le libelle (reeditable ensuite
+  // via l'editeur inline). Effet immediat (etat local) puis persistance via la
+  // route existante (mode save, sans audio) ; rollback si l'enregistrement echoue.
+  async function choisirRemplacement(sIdx: number, aIdx: number, article: ArticleRemplacable) {
+    const precedentes = sections
+    const sectionsMaj = sections.map((s) => ({
+      ...s,
+      articles: s.articles.map((a) => ({ ...a })),
+    }))
+    const cible = sectionsMaj[sIdx]?.articles[aIdx]
+    if (!cible) {
+      toast.show('Article introuvable', 'error')
+      return
+    }
+    cible.costructor_article_id = article.costructor_article_id
+    cible.libelle = article.libelle
+    cible.unite = article.unite
+    cible.prix_vente = article.prix_vente
+    cible.description_technique = article.libelle
+    // cible.quantite : inchangee (on garde la quantite deja saisie).
+
+    setSections(sectionsMaj)
     fermerRecherche()
+
+    try {
+      const fd = new FormData()
+      fd.append('devisId', devisId)
+      fd.append('sections', JSON.stringify(sectionsMaj))
+      const res = await fetch('/api/devis/metres-vocaux', {
+        method: 'POST',
+        body: fd,
+      })
+      if (!res.ok) {
+        const t = await res.text()
+        throw new Error(t || `Erreur ${res.status}`)
+      }
+      toast.show('Article remplacé', 'success')
+    } catch (e) {
+      // Rollback : on restaure l'etat d'avant si la persistance a echoue.
+      setSections(precedentes)
+      toast.show((e as Error).message ?? 'Échec de l\'enregistrement', 'error')
+    }
   }
 
   if (phase === 'technique') {
