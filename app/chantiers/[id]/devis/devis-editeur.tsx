@@ -65,6 +65,15 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
   const chunksRef = useRef<Blob[]>([])
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const debutRef = useRef<number>(0)
+  // Auto-save des metres manuels (etape D) : timer du debounce + miroir des
+  // sections courantes (la sauvegarde differee envoie toujours le dernier etat).
+  const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sectionsRef = useRef<SectionDevis[]>(sectionsInitiales)
+
+  // Le miroir suit l'etat : la sauvegarde differee lira toujours la derniere valeur.
+  useEffect(() => {
+    sectionsRef.current = sections
+  }, [sections])
 
   // Cleanup à la sortie du composant (TOUS les hooks AVANT le branchement de phase).
   useEffect(() => {
@@ -73,6 +82,8 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
         recorderRef.current.stop()
       }
       if (intervalRef.current) clearInterval(intervalRef.current)
+      // Annule un auto-save en attente : pas de sauvegarde apres demontage.
+      if (autoSaveRef.current) clearTimeout(autoSaveRef.current)
     }
   }, [])
 
@@ -84,6 +95,41 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
     ) * 100,
   ) / 100
   const totalTTC = Math.round(totalHT * 1.1 * 100) / 100
+
+  // ---------- Auto-save des metres manuels (etape D) ----------
+
+  // Annule un auto-save en attente. A appeler avant toute sauvegarde EXPLICITE
+  // (vocal, recap) et quand une reponse serveur ramene de nouvelles sections,
+  // pour qu'un debounce en retard n'ecrase jamais un etat plus recent.
+  function annulerAutoSave() {
+    if (autoSaveRef.current) {
+      clearTimeout(autoSaveRef.current)
+      autoSaveRef.current = null
+    }
+  }
+
+  // Persiste silencieusement les sections via la route metres-vocaux en mode save
+  // (route INCHANGEE). Pas de toast : c'est une sauvegarde de fond.
+  async function sauvegardeAuto(sectionsAEnvoyer: SectionDevis[]) {
+    try {
+      const fd = new FormData()
+      fd.append('devisId', devisId)
+      fd.append('sections', JSON.stringify(sectionsAEnvoyer))
+      await fetch('/api/devis/metres-vocaux', { method: 'POST', body: fd })
+    } catch {
+      // Silencieux : la prochaine frappe (ou "Voir le récapitulatif") reessaiera.
+    }
+  }
+
+  // Programme une sauvegarde differee (anti-rafale ~1 s apres la derniere frappe).
+  // Envoie le DERNIER etat (via sectionsRef) au moment ou le timer se declenche.
+  function planifierSauvegarde() {
+    annulerAutoSave()
+    autoSaveRef.current = setTimeout(() => {
+      autoSaveRef.current = null
+      void sauvegardeAuto(sectionsRef.current)
+    }, 1000)
+  }
 
   // ---------- Phase B : helpers ----------
   function modifierQuantite(sectionIdx: number, articleIdx: number, valeur: string) {
@@ -99,6 +145,8 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
       }
       return copie
     })
+    // Edit utilisateur : on programme la sauvegarde automatique differee.
+    planifierSauvegarde()
   }
 
   async function demarrer() {
@@ -135,6 +183,9 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
   }
 
   async function envoyerAudio(blob: Blob) {
+    // Sauvegarde explicite : on annule un auto-save en attente (la reponse vocale
+    // va ramener des sections autoritaires, qu'un debounce en retard ecraserait).
+    annulerAutoSave()
     try {
       const fd = new FormData()
       fd.append('devisId', devisId)
@@ -177,6 +228,9 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
 
   async function allerAuRecap() {
     if (enregistrement) return
+    // Sauvegarde explicite finale : on annule un auto-save en attente (on envoie
+    // ici l'etat complet juste avant de naviguer).
+    annulerAutoSave()
     setEnregistrement(true)
     try {
       const fd = new FormData()
@@ -215,6 +269,9 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
 
   async function sauverDescription(sIdx: number, aIdx: number) {
     if (savingDescription) return
+    // Sauvegarde explicite : on annule un auto-save en attente (cet envoi porte
+    // l'etat complet, quantites comprises).
+    annulerAutoSave()
     setSavingDescription(true)
     try {
       // Met à jour le state local.
@@ -284,6 +341,9 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
   // via l'editeur inline). Effet immediat (etat local) puis persistance via la
   // route existante (mode save, sans audio) ; rollback si l'enregistrement echoue.
   async function choisirRemplacement(sIdx: number, aIdx: number, article: ArticleRemplacable) {
+    // Sauvegarde explicite : on annule un auto-save en attente (cet envoi porte
+    // l'etat complet, quantites comprises).
+    annulerAutoSave()
     const precedentes = sections
     const sectionsMaj = sections.map((s) => ({
       ...s,
