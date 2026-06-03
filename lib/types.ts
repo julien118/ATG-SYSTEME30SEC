@@ -187,6 +187,16 @@ export interface CostructorProduct {
   sellPrice?: number
 }
 
+// Article de la bibliotheque Costructor nettoye pour l'autocompletion de
+// remplacement (lot 4.3). Forme alignee sur ArticleDevis (champs utiles) pour un
+// remplacement drop-in dans une section de devis.
+export interface ArticleRemplacable {
+  costructor_article_id: string
+  libelle: string
+  unite: string
+  prix_vente: number // en euros
+}
+
 export interface CostructorContactEmail {
   email: string
   primary: boolean

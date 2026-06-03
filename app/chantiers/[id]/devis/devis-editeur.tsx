@@ -9,11 +9,20 @@
 // Phase B : Saisie des métrés. Champs quantité + dictée vocale + total live.
 //           C'est la phase qui débouche sur le push Costructor.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ToastProvider'
 import Spinner from '@/components/Spinner'
-import type { SectionDevis } from '@/lib/types'
+import type { ArticleRemplacable, SectionDevis } from '@/lib/types'
+
+// Normalisation pour la recherche d'article : minuscules, accents retires.
+function normaliserRecherche(s: string): string {
+  return (s ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
+}
 
 type Phase = 'technique' | 'metres'
 type EtatMicro = 'pret' | 'enregistre' | 'traitement' | 'erreur'
@@ -46,6 +55,11 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState<string>('')
   const [savingDescription, setSavingDescription] = useState(false)
+  // Remplacement d'article (lot 4.3) : bibliotheque chargee en lazy une seule
+  // fois, et cle de l'article dont la barre de recherche est ouverte.
+  const [articlesBiblio, setArticlesBiblio] = useState<ArticleRemplacable[] | null>(null)
+  const [chargementBiblio, setChargementBiblio] = useState(false)
+  const [rechercheKey, setRechercheKey] = useState<string | null>(null)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -189,6 +203,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
 
   // Helpers édition inline
   function ouvrirEdition(key: string, description: string) {
+    setRechercheKey(null)
     setEditingKey(key)
     setEditDraft(description)
   }
@@ -232,6 +247,42 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
     } finally {
       setSavingDescription(false)
     }
+  }
+
+  // ---------- Phase A : remplacement d'article (lot 4.3) ----------
+
+  // Charge la bibliotheque (GET lecture seule) une seule fois, en lazy : on ne
+  // paie le cout des produits Costructor qu'au premier usage du remplacement.
+  async function chargerBiblio() {
+    if (articlesBiblio || chargementBiblio) return
+    setChargementBiblio(true)
+    try {
+      const res = await fetch('/api/devis/articles')
+      if (!res.ok) throw new Error('Chargement de la bibliothèque échoué')
+      const data = (await res.json()) as { articles: ArticleRemplacable[] }
+      setArticlesBiblio(data.articles ?? [])
+    } catch (e) {
+      toast.show((e as Error).message ?? 'Bibliothèque indisponible', 'error')
+    } finally {
+      setChargementBiblio(false)
+    }
+  }
+
+  function ouvrirRecherche(key: string) {
+    annulerEdition()
+    setRechercheKey(key)
+    void chargerBiblio()
+  }
+
+  function fermerRecherche() {
+    setRechercheKey(null)
+  }
+
+  // Commit 1 : la selection ne remplace pas encore (ce sera le commit 2). On
+  // ferme juste la recherche et on logue l'article choisi pour validation.
+  function choisirRemplacement(sIdx: number, aIdx: number, article: ArticleRemplacable) {
+    console.log('[remplacement] article choisi (non applique au commit 1)', { sIdx, aIdx, article })
+    fermerRecherche()
   }
 
   if (phase === 'technique') {
@@ -316,17 +367,40 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
                           <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
                             {a.description_technique}
                           </p>
-                          <button
-                            type="button"
-                            onClick={() => ouvrirEdition(editKey, a.description_technique)}
-                            className="mt-2 text-[11px] text-primary hover:underline inline-flex items-center gap-1"
-                          >
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M12 20h9" />
-                              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                            </svg>
-                            Modifier la description
-                          </button>
+                          <div className="mt-2 flex flex-wrap items-center gap-4">
+                            <button
+                              type="button"
+                              onClick={() => ouvrirEdition(editKey, a.description_technique)}
+                              className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M12 20h9" />
+                                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                              </svg>
+                              Modifier la description
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => ouvrirRecherche(editKey)}
+                              className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="17 1 21 5 17 9" />
+                                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                                <polyline points="7 23 3 19 7 15" />
+                                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                              </svg>
+                              Remplacer l&apos;article
+                            </button>
+                          </div>
+                          {rechercheKey === editKey && (
+                            <RechercheArticle
+                              articles={articlesBiblio}
+                              chargement={chargementBiblio}
+                              onChoisir={(article) => choisirRemplacement(sIdx, aIdx, article)}
+                              onFermer={fermerRecherche}
+                            />
+                          )}
                         </div>
                       )}
                     </li>
@@ -478,5 +552,101 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
         </div>
       </div>
     </>
+  )
+}
+
+// =========================================================
+// Barre de recherche d'article (autocompletion, lot 4.3)
+// =========================================================
+// Filtrage 100 % en memoire sur la bibliotheque deja chargee : aucune requete
+// reseau par frappe. Anti-rafale leger (150 ms), plafond de 8 propositions,
+// recherche normalisee (accents et casse ignores) sur le libelle. Les
+// propositions sont de VRAIS articles de la bibliotheque (anti-hallucination).
+function RechercheArticle({
+  articles,
+  chargement,
+  onChoisir,
+  onFermer,
+}: {
+  articles: ArticleRemplacable[] | null
+  chargement: boolean
+  onChoisir: (article: ArticleRemplacable) => void
+  onFermer: () => void
+}) {
+  const [texte, setTexte] = useState('')
+  const [terme, setTerme] = useState('')
+
+  // Anti-rafale : on ne recalcule le filtre qu'apres 150 ms sans frappe.
+  useEffect(() => {
+    const t = setTimeout(() => setTerme(texte), 150)
+    return () => clearTimeout(t)
+  }, [texte])
+
+  const resultats = useMemo(() => {
+    if (!articles) return []
+    const q = normaliserRecherche(terme)
+    if (q.length < 2) return []
+    return articles
+      .filter((a) => normaliserRecherche(a.libelle).includes(q))
+      .slice(0, 8)
+  }, [articles, terme])
+
+  const termePret = normaliserRecherche(terme).length >= 2
+
+  return (
+    <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={texte}
+          onChange={(e) => setTexte(e.target.value)}
+          placeholder="Rechercher un article (ex : écha, lavage, I4...)"
+          autoFocus
+          className="input-ionnyx flex-1 text-sm px-3 py-2"
+        />
+        <button
+          type="button"
+          onClick={onFermer}
+          className="btn-tertiary text-xs px-3 py-2"
+        >
+          Fermer
+        </button>
+      </div>
+
+      <div className="mt-2">
+        {chargement && (
+          <p className="text-xs text-gray-400 flex items-center gap-1.5">
+            <Spinner className="h-3 w-3" />
+            Chargement de votre bibliothèque...
+          </p>
+        )}
+        {!chargement && !termePret && (
+          <p className="text-[11px] text-gray-400">
+            Tapez au moins 2 lettres pour chercher dans votre bibliothèque.
+          </p>
+        )}
+        {!chargement && termePret && resultats.length === 0 && (
+          <p className="text-xs text-gray-400">Aucun article ne correspond.</p>
+        )}
+        {!chargement && resultats.length > 0 && (
+          <ul className="divide-y divide-border rounded-lg border border-border bg-white overflow-hidden">
+            {resultats.map((a) => (
+              <li key={a.costructor_article_id}>
+                <button
+                  type="button"
+                  onClick={() => onChoisir(a)}
+                  className="w-full text-left px-3 py-2 hover:bg-primary/5 transition flex items-baseline justify-between gap-3"
+                >
+                  <span className="text-xs text-foreground flex-1">{a.libelle}</span>
+                  <span className="text-[11px] text-gray-400 whitespace-nowrap">
+                    {formatEUR(a.prix_vente)} / {a.unite}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   )
 }

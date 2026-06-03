@@ -16,6 +16,7 @@ import {
 } from './atg-devis-structure'
 import { assertCompteJulien, bannerCompte } from './costructor-compte'
 import type {
+  ArticleRemplacable,
   CostructorContact,
   CostructorProduct,
   CostructorQuotePayload,
@@ -98,6 +99,55 @@ export async function listerProduits(): Promise<CostructorProduct[]> {
     ...p,
     name: stripHtml(p.name ?? ''),
   }))
+}
+
+// Forme brute (partielle) d'un produit Costructor utile au mapping. Le champ
+// `unit` est un objet imbrique (pas un simple id), `sellPrice` est en CENTIMES.
+interface ProduitBrut {
+  id: string
+  name?: string
+  type?: string
+  sellPrice?: number | null
+  unit?: { id?: string; name?: string; symbol?: string } | null
+  uses?: number | null
+}
+
+// Liste les articles de la bibliotheque Olivier nettoyes pour l'autocompletion
+// de remplacement (lot 4.3). LECTURE SEULE (GET /products). Pipeline :
+//   - ecarte les lignes de texte (type 'text', ce ne sont pas des articles) ;
+//   - garde ceux qui ont un prix unitaire (> 0) ET une unite (un poste de devis
+//     en a besoin) ;
+//   - mappe en format propre : prix en EUROS (sellPrice centimes / 100), unite via
+//     `unit.symbol` (m2, ml, u...), libelle nettoye du HTML (stripHtml) ;
+//   - dedoublonne par nom normalise en gardant la variante la PLUS UTILISEE (uses
+//     le plus eleve) : ecarte les doublons du clone Olivier sur le compte test.
+// _limit eleve pour ne pas etre plafonne (cf piege meta-params underscore).
+export async function listerArticlesBibliotheque(): Promise<ArticleRemplacable[]> {
+  const bruts = await costructorFetch<ProduitBrut[]>('/products?_limit=5000')
+
+  const utilisables = bruts
+    .filter((p) => p.type !== 'text')
+    .filter((p) => typeof p.sellPrice === 'number' && p.sellPrice > 0)
+    .filter((p) => !!p.unit?.symbol)
+    .map((p) => ({
+      costructor_article_id: p.id,
+      libelle: stripHtml(p.name ?? ''),
+      unite: p.unit!.symbol as string,
+      prix_vente: (p.sellPrice as number) / 100,
+      uses: p.uses ?? 0,
+    }))
+
+  // Dedup par nom normalise : on conserve la variante au `uses` le plus eleve.
+  const parNom = new Map<string, (typeof utilisables)[number]>()
+  for (const a of utilisables) {
+    const cle = normaliserNom(a.libelle)
+    const existant = parNom.get(cle)
+    if (!existant || a.uses > existant.uses) parNom.set(cle, a)
+  }
+
+  return Array.from(parNom.values())
+    .sort((a, b) => b.uses - a.uses)
+    .map(({ uses: _uses, ...article }) => article)
 }
 
 // ---------- Contacts ----------
