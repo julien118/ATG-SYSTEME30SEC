@@ -173,7 +173,9 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
         const formData = new FormData()
         formData.append('audio', blob, 'recording.webm')
         try {
-          const res = await fetchWithTimeout('/api/transcribe', { method: 'POST', body: formData }, 20000)
+          // 30s : laisse la marge pour Whisper (prompt metier) + la passe de
+          // reponctuation prudente cote serveur (lot 2).
+          const res = await fetchWithTimeout('/api/transcribe', { method: 'POST', body: formData }, 30000)
           const { text } = await res.json()
 
           if (text) {
