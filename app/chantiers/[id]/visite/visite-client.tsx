@@ -24,7 +24,6 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
 
   const [captures, setCaptures] = useState<CaptureItem[]>(initialCaptures)
   const [describeMode, setDescribeMode] = useState(false)
-  const [countdown, setCountdown] = useState(0)
   const [showEndModal, setShowEndModal] = useState(false)
   const [uploading, setUploading] = useState(false)
   const toast = useToast()
@@ -32,7 +31,6 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
   const timelineRef = useRef<HTMLDivElement>(null)
   const userScrolledRef = useRef(false)
   const lastPhotoRef = useRef<{ id: string; position: number; timestamp: number } | null>(null)
-  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const nextPosition = captures.length > 0 ? Math.max(...captures.map((c) => c.position)) + 1 : 1
 
@@ -91,21 +89,10 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
         lastPhotoRef.current = { id: inserted.id, position, timestamp: Date.now() }
         toast.show('Photo ajoutée', 'success')
 
-        // Start 10s countdown for describe mode
+        // Mode "decrire la photo" : actif tant qu'Olivier n'a pas dicte sa
+        // description, SANS limite de duree (il demarre et arrete le vocal quand
+        // il veut). Le lien photo<->vocal est preserve tant que describeMode dure.
         setDescribeMode(true)
-        setCountdown(10)
-        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current)
-        countdownTimerRef.current = setInterval(() => {
-          setCountdown((prev) => {
-            if (prev <= 1) {
-              clearInterval(countdownTimerRef.current!)
-              countdownTimerRef.current = null
-              setDescribeMode(false)
-              return 0
-            }
-            return prev - 1
-          })
-        }, 1000)
       }
     } catch (err) {
       toast.show('Erreur lors de l\'upload photo', 'error')
@@ -159,23 +146,18 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
       if (inserted) {
         setCaptures((prev) => [...prev, inserted as CaptureItem])
 
-        // Reset describe mode
+        // Fin de la description : on quitte le mode "decrire la photo".
         if (describeMode) {
           setDescribeMode(false)
-          setCountdown(0)
-          if (countdownTimerRef.current) {
-            clearInterval(countdownTimerRef.current)
-            countdownTimerRef.current = null
-          }
         }
 
         // Transcribe
         const formData = new FormData()
         formData.append('audio', blob, 'recording.webm')
         try {
-          // 30s : laisse la marge pour Whisper (prompt metier) + la passe de
-          // reponctuation prudente cote serveur (lot 2).
-          const res = await fetchWithTimeout('/api/transcribe', { method: 'POST', body: formData }, 30000)
+          // Timeout client large (jusqu'a ~5 min d'audio) : laisse la marge a
+          // l'upload + Whisper (prompt metier) + la reponctuation cote serveur.
+          const res = await fetchWithTimeout('/api/transcribe', { method: 'POST', body: formData }, 130000)
           const { text } = await res.json()
 
           if (text) {
@@ -298,19 +280,11 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
       {/* BARRE D'ACTIONS FIXE */}
       <div className="flex-shrink-0 bg-white border-t border-border px-5 py-4 pb-safe">
         <div className="max-w-lg mx-auto">
-        {/* Countdown indicator */}
-        {describeMode && countdown > 0 && (
-          <div className="mb-3">
-            <div className="flex items-center justify-between text-xs text-primary font-medium mb-1">
-              <span>Décrivez cette photo...</span>
-              <span>{countdown}s</span>
-            </div>
-            <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary rounded-full transition-all duration-1000 ease-linear"
-                style={{ width: `${(countdown / 10) * 100}%` }}
-              />
-            </div>
+        {/* Indice "decrire la photo" : sans compte a rebours, Olivier prend le
+            temps qu'il veut pour dicter sa description. */}
+        {describeMode && (
+          <div className="mb-3 flex items-center gap-1.5 text-xs text-primary font-medium">
+            <span>Décrivez cette photo, ou ajoutez une note. Arrêtez quand vous voulez.</span>
           </div>
         )}
 

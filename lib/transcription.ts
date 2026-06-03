@@ -21,8 +21,12 @@ import { anthropic } from './anthropic'
 
 const MODELE_WHISPER = 'whisper-large-v3-turbo'
 const MODELE_REPONCTUATION = 'claude-sonnet-4-20250514'
-const TIMEOUT_WHISPER_MS = 20000
-const TIMEOUT_REPONCTUATION_MS = 8000
+// Timeouts dimensionnes pour absorber un enregistrement long (jusqu'a ~5 min,
+// le garde-fou de duree cote AudioRecorder) : Whisper turbo reste rapide mais on
+// laisse une marge confortable pour l'upload + la transcription, et la
+// reponctuation a le temps de traiter un texte plus long.
+const TIMEOUT_WHISPER_MS = 120000
+const TIMEOUT_REPONCTUATION_MS = 20000
 
 // Prompt metier Whisper : texte court (cap ~224 tokens cote Whisper), BIEN ponctue
 // et accentue (Whisper calque ce style), truffe du vocabulaire et des marques
@@ -128,7 +132,9 @@ export async function reponctuer(texteBrut: string): Promise<string> {
     const reponse = await anthropic.messages.create(
       {
         model: MODELE_REPONCTUATION,
-        max_tokens: 2048,
+        // Marge pour un texte long (dictee de plusieurs minutes) sans tronquer la
+        // sortie reponctuee (sinon le garde-fou de fidelite la rejette).
+        max_tokens: 4096,
         temperature: 0,
         system: SYSTEME_REPONCTUATION,
         messages: [{ role: 'user', content: brut }],

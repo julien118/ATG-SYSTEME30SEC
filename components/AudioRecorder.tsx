@@ -1,6 +1,11 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+
+// Garde-fou de duree maximale (~5 min). N'affecte jamais un usage normal : il
+// evite seulement un fichier enorme et une transcription qui echouerait si un
+// enregistrement reste ouvert par accident (ex : telephone en poche).
+const DUREE_MAX_S = 300
 
 interface AudioRecorderProps {
   onRecordingComplete: (blob: Blob) => void
@@ -70,6 +75,14 @@ export default function AudioRecorder({
     setRecording(false)
     setDuration(0)
   }, [])
+
+  // Garde-fou : arret automatique a la duree maximale (l'enregistrement deja
+  // capture est traite normalement via onstop -> onRecordingComplete).
+  useEffect(() => {
+    if (recording && duration >= DUREE_MAX_S) {
+      stopRecording()
+    }
+  }, [recording, duration, stopRecording])
 
   const formatDuration = (s: number) => {
     const m = Math.floor(s / 60)
