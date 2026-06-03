@@ -9,8 +9,8 @@
 //  2. Pas d'audio → sauvegarde simple des sections envoyées (édition manuelle).
 
 import { NextResponse } from 'next/server'
-import Groq from 'groq-sdk'
 import { parserMetres, appliquerUpdates } from '@/lib/metrics-parser'
+import { transcrireAudio } from '@/lib/transcription'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Devis, SectionDevis } from '@/lib/types'
 
@@ -56,21 +56,10 @@ export async function POST(request: Request) {
     let transcription: string | null = null
 
     if (audio instanceof File && audio.size > 0) {
-      // Mode parse : Whisper + Claude.
-      const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 25000)
-      const t = await groq.audio.transcriptions.create(
-        {
-          file: audio,
-          model: 'whisper-large-v3-turbo',
-          language: 'fr',
-          response_format: 'json',
-        },
-        { signal: controller.signal },
-      )
-      clearTimeout(timer)
-      transcription = t.text
+      // Mode parse : Whisper (prompt metier + temperature 0, lot 2.1) + Claude.
+      // Pas de reponctuation ici : le texte sert a parserMetres (extraction des
+      // chiffres par Claude), il n'est pas affiche tel quel a l'utilisateur.
+      transcription = await transcrireAudio(audio)
 
       const result = await parserMetres(transcription, sectionsBase)
       const applique = appliquerUpdates(sectionsBase, result)
