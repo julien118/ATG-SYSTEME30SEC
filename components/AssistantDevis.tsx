@@ -11,6 +11,7 @@
 // navigateur (etat React uniquement, pas de localStorage).
 
 import { useEffect, useRef, useState } from 'react'
+import AudioRecorder from './AudioRecorder'
 
 interface Message {
   id: number
@@ -53,6 +54,10 @@ export default function AssistantDevis() {
   const [messages, setMessages] = useState<Message[]>([])
   const [saisie, setSaisie] = useState('')
   const [reflexion, setReflexion] = useState(false)
+  // Etat de la dictee : transcription en cours, et message discret eventuel
+  // (micro refuse ou transcription echouee). Le champ reste utilisable au clavier.
+  const [transcription, setTranscription] = useState(false)
+  const [erreurVocal, setErreurVocal] = useState('')
   const compteur = useRef(0)
   const finRef = useRef<HTMLDivElement>(null)
   const champRef = useRef<HTMLInputElement>(null)
@@ -93,6 +98,39 @@ export default function AssistantDevis() {
       ])
     } finally {
       setReflexion(false)
+    }
+  }
+
+  // Dictee vocale : on envoie le blob au MEME endpoint que les notes de visite
+  // (/api/transcribe, qui applique le helper du lot 2 : prompt metier + reponctuation).
+  // LECTURE SEULE : aucune ecriture Supabase, on ne persiste rien, on remplit juste
+  // le champ. Le texte transcrit est ajoute au champ (modifiable), jamais envoye
+  // automatiquement : Olivier relit et corrige avant d'envoyer.
+  async function transcrire(blob: Blob) {
+    if (blob.size < 1000) {
+      setErreurVocal('Enregistrement trop court.')
+      return
+    }
+    setErreurVocal('')
+    setTranscription(true)
+    try {
+      const formData = new FormData()
+      formData.append('audio', blob, 'question.webm')
+      const res = await fetch('/api/transcribe', { method: 'POST', body: formData })
+      const data = await res.json().catch(() => ({}))
+      const texte = (data.text ?? '').trim()
+      if (res.ok && texte) {
+        // Concatene proprement au texte deja saisi plutot que d'ecraser.
+        setSaisie((prev) => (prev.trim() ? `${prev.trim()} ${texte}` : texte))
+      } else {
+        setErreurVocal('Transcription échouée. Réessayez ou tapez votre question.')
+      }
+    } catch {
+      setErreurVocal('Transcription échouée. Réessayez ou tapez votre question.')
+    } finally {
+      setTranscription(false)
+      // Redonne la main au champ pour la relecture et la correction.
+      champRef.current?.focus()
     }
   }
 
@@ -190,19 +228,35 @@ export default function AssistantDevis() {
           {/* Saisie */}
           <form
             onSubmit={(e) => { e.preventDefault(); envoyer(saisie) }}
-            className="flex items-center gap-2 border-t border-border bg-white px-3 py-2.5"
+            className="flex flex-col gap-1.5 border-t border-border bg-white px-3 py-2.5"
           >
+            {/* Message discret : micro refuse ou transcription echouee. */}
+            {erreurVocal && (
+              <p className="text-[11px] text-red-600 px-1" role="status">
+                {erreurVocal}
+              </p>
+            )}
+            <div className="flex items-center gap-2">
             <input
               ref={champRef}
               value={saisie}
               onChange={(e) => setSaisie(e.target.value)}
-              placeholder="Posez votre question..."
+              placeholder={transcription ? 'Transcription en cours...' : 'Posez votre question...'}
               className="flex-1 min-w-0 rounded-full bg-input-bg border border-border focus:border-primary focus:bg-input-focus outline-none px-4 py-2.5 text-sm"
               enterKeyHint="send"
             />
+            {/* Dictee vocale : meme mecanique micro que la visite (variante compacte),
+                meme endpoint de transcription. Desactivee pendant la reflexion du bot
+                ou une transcription deja en cours. */}
+            <AudioRecorder
+              variant="compact"
+              onRecordingComplete={transcrire}
+              onError={setErreurVocal}
+              disabled={reflexion || transcription}
+            />
             <button
               type="submit"
-              disabled={!saisie.trim() || reflexion}
+              disabled={!saisie.trim() || reflexion || transcription}
               aria-label="Envoyer"
               className="h-10 w-10 shrink-0 rounded-full bg-primary text-white flex items-center justify-center disabled:opacity-40 enabled:hover:bg-primary-dark enabled:active:scale-95 transition"
             >
@@ -210,6 +264,7 @@ export default function AssistantDevis() {
                 <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
               </svg>
             </button>
+            </div>
           </form>
         </div>
       )}
