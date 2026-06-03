@@ -22,11 +22,15 @@ interface Message {
 const EXEMPLES = [
   'Mon prix moyen sur les ravalements',
   'Mes 3 plus gros devis',
-  'Le total de mes devis d\'ITE',
+  'Qu\'ai-je noté chez M. Dupont ?',
+  'Mes comptes rendus récents',
 ]
 
+// Accueil formule par briques (les sources consultables), pour pouvoir y ajouter
+// "vos clients" a l'etape C sans tout reecrire.
+const SOURCES_CONSULTABLES = 'vos devis et vos comptes rendus de visite'
 const ACCUEIL =
-  'Bonjour Olivier, que souhaitez-vous savoir sur vos devis ? Posez-moi une question, je consulte votre historique.'
+  `Bonjour Olivier, que souhaitez-vous savoir ? Je peux consulter ${SOURCES_CONSULTABLES}.`
 
 // Convertit le texte du bot (sauts de ligne + **gras**) en elements React, sans
 // injection HTML (on construit les noeuds nous-memes).
@@ -140,7 +144,7 @@ export default function AssistantDevis() {
       {!ouvert && (
         <button
           onClick={() => setOuvert(true)}
-          aria-label="Ouvrir l'assistant devis"
+          aria-label="Ouvrir l'assistant ATG"
           className="fixed right-5 z-50 h-14 w-14 rounded-full bg-primary text-white shadow-lg shadow-primary/30 flex items-center justify-center hover:bg-primary-dark active:scale-95 transition animate-scale-in"
           // Empilee AU-DESSUS du bouton "ajouter une visite" (bottom-8 = 32px,
           // marge mb-safe = max(12px, safe-area), hauteur 56px) avec un ecart
@@ -163,7 +167,7 @@ export default function AssistantDevis() {
             marginBottom: 'env(safe-area-inset-bottom)',
           }}
           role="dialog"
-          aria-label="Assistant devis"
+          aria-label="Assistant ATG"
         >
           {/* En-tete */}
           <div className="flex items-center gap-3 bg-header text-white px-4 py-3">
@@ -171,7 +175,7 @@ export default function AssistantDevis() {
               <IconeBot className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold leading-tight">Assistant devis</p>
+              <p className="text-sm font-semibold leading-tight">Assistant ATG</p>
               <p className="text-[11px] text-white/60 leading-tight">Consultation - lecture seule</p>
             </div>
             <button
