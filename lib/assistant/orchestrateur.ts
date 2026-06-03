@@ -5,14 +5,16 @@
 // vers un domaine, puis delegue :
 //   - "devis"          -> lib/devis-historique.ts (INCHANGE, branche tel quel).
 //   - "comptes_rendus" -> lib/assistant/domaine-comptes-rendus.ts.
+//   - "clients"         -> lib/assistant/domaine-clients.ts.
 //   - "inconnu"         -> message propre, aucun appel de donnees, pas de plantage.
 //
-// Lecture seule stricte partout (Costructor en GET pour les devis, Supabase en
-// SELECT pour les comptes rendus), anti-hallucination preservee par domaine.
+// Lecture seule stricte partout (Costructor en GET pour devis et clients,
+// Supabase en SELECT pour les comptes rendus), anti-hallucination par domaine.
 
 import { repondreQuestion } from '../devis-historique'
 import { aiguiller, type DomaineAssistant } from './aiguilleur'
 import { repondreQuestionCr } from './domaine-comptes-rendus'
+import { repondreQuestionClients } from './domaine-clients'
 
 export interface ReponseOrchestrateur {
   reponse: string
@@ -21,7 +23,7 @@ export interface ReponseOrchestrateur {
 }
 
 const MESSAGE_INCONNU =
-  'Je peux vous renseigner sur vos devis et vos comptes rendus de visite. Posez-moi une question sur l\'un de ces sujets, par exemple : « mon prix moyen sur les ravalements » ou « qu\'avait-on noté chez M. Dupont ? ».'
+  'Je peux vous renseigner sur vos devis, vos comptes rendus de visite et vos clients. Posez-moi une question sur l\'un de ces sujets, par exemple : « mon prix moyen sur les ravalements », « qu\'avait-on noté chez M. Dupont ? » ou « l\'adresse de M. Dupont ».'
 
 export async function repondreAssistant(
   question: string,
@@ -32,6 +34,11 @@ export async function repondreAssistant(
   if (domaine === 'comptes_rendus') {
     const { reponse, nbComptesRendus } = await repondreQuestionCr(question, aujourdhui)
     return { reponse, domaine, nb: nbComptesRendus }
+  }
+
+  if (domaine === 'clients') {
+    const { reponse, nbContacts } = await repondreQuestionClients(question)
+    return { reponse, domaine, nb: nbContacts }
   }
 
   if (domaine === 'inconnu') {

@@ -10,12 +10,11 @@ import { anthropic } from '../anthropic'
 
 const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 
-export type DomaineAssistant = 'devis' | 'comptes_rendus' | 'inconnu'
+export type DomaineAssistant = 'devis' | 'comptes_rendus' | 'clients' | 'inconnu'
 
-// Domaines reellement branches a cette etape (A+B). "clients" rejoindra ce
-// registre a l'etape C, quand son module existera : l'aiguilleur ne doit jamais
-// classer vers un domaine non encore implemente (sinon repli sur "devis").
-const DOMAINES_BRANCHES = new Set<DomaineAssistant>(['devis', 'comptes_rendus'])
+// Domaines reellement branches. L'aiguilleur ne doit jamais classer vers un
+// domaine non implemente (sinon repli sur "devis").
+const DOMAINES_BRANCHES = new Set<DomaineAssistant>(['devis', 'comptes_rendus', 'clients'])
 
 function promptAiguilleur(question: string): string {
   return `Tu es l'aiguilleur d'un assistant pour Olivier, artisan en ravalement de façade et ITE. Tu ne reponds PAS a la question : tu determines de QUEL type de donnees elle releve.
@@ -26,14 +25,19 @@ ${question}
 ---
 
 Reponds STRICTEMENT en JSON valide (aucun texte autour, pas de markdown), schema EXACT :
-{ "domaine": "devis | comptes_rendus | inconnu" }
+{ "domaine": "devis | comptes_rendus | clients | inconnu" }
 
 DOMAINES :
-- "devis" : ses devis, montants, prix, chiffre d'affaires, typologies de travaux chiffrees. Exemples : "mon prix moyen sur les ravalements", "mes 3 plus gros devis", "le total de mes devis d'ITE", "combien j'ai devise pour tel client".
+- "devis" : ses devis, montants, prix, chiffre d'affaires, typologies de travaux chiffrees. Exemples : "mon prix moyen sur les ravalements", "mes 3 plus gros devis", "le total de mes devis d'ITE", "les devis de M. Dupont", "combien j'ai devise pour tel client".
 - "comptes_rendus" : ses comptes rendus de visite de chantier, ses observations terrain, les points de vigilance releves, l'etat constate d'une façade, le nombre de visites. Exemples : "qu'avait-on note chez M. Dupont", "quels chantiers avaient des fissures", "le compte rendu de tel chantier", "combien de visites j'ai faites".
-- "inconnu" : tout le reste (salutations, hors sujet, ou impossible a rattacher a l'un des deux).
+- "clients" : l'IDENTITE et les COORDONNEES de ses clients ou contacts (adresse, telephone, email, fiche), ou la liste de ses clients. Exemples : "l'adresse de M. Dupont", "le telephone de Mme Martin", "les coordonnees de tel client", "mes clients a Tours", "combien de clients j'ai".
+- "inconnu" : tout le reste (salutations, hors sujet, ou impossible a rattacher).
 
-REGLE : en cas de doute entre devis et comptes_rendus, tranche sur le coeur de la question (un chiffre/montant => devis ; une observation/un constat terrain => comptes_rendus). Si la question n'a rien a voir avec ses devis ou ses visites, reponds "inconnu".`
+REGLES DE DEPARTAGE (important) :
+- Un MONTANT ou des DEVIS, MEME avec un client nomme, => "devis" ("les devis de M. Dupont" => devis).
+- Une OBSERVATION / un constat terrain => "comptes_rendus".
+- L'IDENTITE ou les COORDONNEES (adresse, telephone, email, fiche, liste de clients) => "clients".
+- Si la question n'a rien a voir avec ses devis, ses visites ou ses clients, reponds "inconnu".`
 }
 
 function extraireJson(texte: string): { domaine?: string } {

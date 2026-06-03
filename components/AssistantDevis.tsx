@@ -23,12 +23,12 @@ const EXEMPLES = [
   'Mon prix moyen sur les ravalements',
   'Mes 3 plus gros devis',
   'Qu\'ai-je noté chez M. Dupont ?',
-  'Mes comptes rendus récents',
+  'L\'adresse de M. Dupont',
 ]
 
 // Accueil formule par briques (les sources consultables), pour pouvoir y ajouter
-// "vos clients" a l'etape C sans tout reecrire.
-const SOURCES_CONSULTABLES = 'vos devis et vos comptes rendus de visite'
+// de nouveaux domaines sans tout reecrire.
+const SOURCES_CONSULTABLES = 'vos devis, vos comptes rendus de visite et vos clients'
 const ACCUEIL =
   `Bonjour Olivier, que souhaitez-vous savoir ? Je peux consulter ${SOURCES_CONSULTABLES}.`
 
