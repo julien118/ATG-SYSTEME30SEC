@@ -21,8 +21,12 @@ import type { Chantier, Devis, SectionDevis } from '@/lib/types'
 
 export async function POST(request: Request) {
   try {
-    const { devisId } = (await request.json().catch(() => ({}))) as {
+    const { devisId, mode } = (await request.json().catch(() => ({}))) as {
       devisId?: string
+      // 'remplacer' (defaut) : comportement actuel (supprime l'ancien devis
+      // Costructor avant de recreer). 'copie' (point 13) : on NE supprime PAS
+      // l'ancien, on cree le nouveau a cote (Olivier garde l'ancienne version).
+      mode?: 'remplacer' | 'copie'
     }
     if (!devisId) {
       return NextResponse.json({ error: 'devisId manquant' }, { status: 400 })
@@ -80,10 +84,14 @@ export async function POST(request: Request) {
     const total_ht = calculerTotalHT(sections)
     const total_ttc = calculerTotalTTC(total_ht, tvaTaux)
 
-    // Idempotence : si un devis Costructor existe déjà pour cette ligne,
-    // on le supprime avant d'en créer un nouveau. Évite la pollution de
-    // brouillons en doublon quand le pro clique plusieurs fois "Envoyer".
-    if (devis.costructor_devis_id) {
+    // Idempotence (mode 'remplacer', defaut) : si un devis Costructor existe déjà
+    // pour cette ligne, on le supprime avant d'en créer un nouveau. Évite la
+    // pollution de brouillons en doublon quand le pro clique plusieurs fois.
+    // Mode 'copie' (point 13) : on SAUTE cette suppression -> l'ancien devis reste
+    // sur Costructor et la nouvelle version est créée à côté. La ligne devis sera
+    // ensuite réécrite avec l'id du NOUVEAU (l'app suit le plus récent ; l'ancien
+    // reste dans Costructor, non tracé par l'app, c'est voulu).
+    if (mode !== 'copie' && devis.costructor_devis_id) {
       await supprimerDevis(devis.costructor_devis_id)
     }
 

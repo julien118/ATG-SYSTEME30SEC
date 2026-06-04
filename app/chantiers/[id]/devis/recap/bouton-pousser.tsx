@@ -28,7 +28,10 @@ export default function BoutonPousser({ devisId, chantierId: _chantierId, dejaEn
   const [etape, setEtape] = useState(0)
   const [confirmOuvert, setConfirmOuvert] = useState(false)
 
-  async function pousser() {
+  // mode : 'remplacer' (defaut, supprime l'ancien devis Costructor) ou 'copie'
+  // (cree un nouveau devis sans toucher a l'ancien). La route applique le mode ;
+  // sans devis deja envoye, on pousse simplement (mode sans effet).
+  async function pousser(mode: 'remplacer' | 'copie' = 'remplacer') {
     if (enCours) return
     setEnCours(true)
     setEtape(0)
@@ -42,7 +45,7 @@ export default function BoutonPousser({ devisId, chantierId: _chantierId, dejaEn
       const res = await fetch('/api/devis/pousser', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ devisId }),
+        body: JSON.stringify({ devisId, mode }),
       })
       clearInterval(it)
       const data = await res.json()
@@ -67,9 +70,10 @@ export default function BoutonPousser({ devisId, chantierId: _chantierId, dejaEn
     }
   }
 
-  function confirmerRemplacement() {
+  // Choix dans le pop-up : remplacer (supprime l'ancien) ou copie (le garde).
+  function choisirEnvoi(mode: 'remplacer' | 'copie') {
     setConfirmOuvert(false)
-    void pousser()
+    void pousser(mode)
   }
 
   if (enCours) {
@@ -105,21 +109,28 @@ export default function BoutonPousser({ devisId, chantierId: _chantierId, dejaEn
               Ce devis est déjà sur Costructor
             </h3>
             <p className="text-gray-500 text-sm mb-6">
-              Voulez-vous le remplacer par la nouvelle version ? L&apos;ancien devis
-              sera supprimé sur Costructor et remplacé par celui-ci.
+              Voulez-vous remplacer l&apos;ancienne version (elle sera supprimée sur
+              Costructor) ou créer une copie à côté en gardant l&apos;ancienne ?
             </p>
-            <div className="flex gap-3">
+            {/* 3 boutons empiles (mieux sur mobile) : principal / secondaire / tertiaire. */}
+            <div className="flex flex-col gap-2">
               <button
-                onClick={() => setConfirmOuvert(false)}
-                className="btn-tertiary flex-1"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={confirmerRemplacement}
-                className="btn-primary flex-1"
+                onClick={() => choisirEnvoi('remplacer')}
+                className="btn-primary w-full"
               >
                 Remplacer et envoyer
+              </button>
+              <button
+                onClick={() => choisirEnvoi('copie')}
+                className="btn-secondary w-full"
+              >
+                Créer une copie
+              </button>
+              <button
+                onClick={() => setConfirmOuvert(false)}
+                className="btn-tertiary w-full"
+              >
+                Annuler
               </button>
             </div>
           </div>
