@@ -353,11 +353,22 @@ export function ajouterLienCompteRendu(
   return base ? `${base}<br><br>${lienHtml}` : lienHtml
 }
 
-// Base URL publique de l'app pour les liens courts (lot 3B), reglee via
-// NEXT_PUBLIC_SITE_URL (.env.local en local, variables d'env Vercel en deploiement).
-// Tiret final retire. Chaine vide si la variable n'est pas definie.
+// Base URL publique de l'app pour les liens courts (lot 3B). Priorite (bug 5
+// vague 2, durcissement volet b) :
+//   1. NEXT_PUBLIC_SITE_URL si definie (.env.local en local, variable Vercel) ;
+//   2. sinon https://<VERCEL_PROJECT_PRODUCTION_URL> : domaine de production STABLE
+//      fourni par Vercel, pour que le lien injecte pointe vers la route a nom propre
+//      meme si la variable explicite est oubliee. On n'utilise PAS VERCEL_URL (URL
+//      par deploiement, ephemere : le lien est grave pour toujours dans Costructor) ;
+//   3. sinon chaine vide -> l'appelant retombe sur l'URL storage brute (dernier
+//      recours seulement, le PDF garde alors un nom technique).
+// Tiret final retire dans tous les cas.
 function baseUrlApp(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL ?? '').trim().replace(/\/+$/, '')
+  const explicite = (process.env.NEXT_PUBLIC_SITE_URL ?? '').trim()
+  if (explicite) return explicite.replace(/\/+$/, '')
+  const prodVercel = (process.env.VERCEL_PROJECT_PRODUCTION_URL ?? '').trim()
+  if (prodVercel) return `https://${prodVercel.replace(/\/+$/, '')}`
+  return ''
 }
 
 // Lien court du compte rendu (lot 3B) : "<base>/r/<chantierId>", qui redirige vers
