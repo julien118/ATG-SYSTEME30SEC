@@ -81,14 +81,26 @@ export async function POST(request: Request) {
       total_ttc = Math.round(total_ht * 1.1 * 100) / 100
     }
 
+    // Filet anti-retrogradation (bug 4 vague 2) : on ne repasse le statut a
+    // 'metres_en_cours' que s'il y a un VRAI changement de sections. Si les
+    // sections entrantes sont identiques aux sections_finales deja en base (cas
+    // d'une simple consultation : ouvrir le devis puis avancer vers le recap sans
+    // rien modifier), on NE touche PAS au statut : un devis 'pousse_costructor'
+    // (Devis envoye) reste affiche comme tel. Comparaison par egalite de structure
+    // (serialisation), le client renvoyant exactement ce que le serveur lui a fourni.
+    const sectionsInchangees =
+      JSON.stringify(sectionsFinales) === JSON.stringify(d.sections_finales ?? null)
+
+    const champsMaj: Record<string, unknown> = {
+      sections_finales: sectionsFinales,
+      total_ht,
+      total_ttc,
+    }
+    if (!sectionsInchangees) champsMaj.statut = 'metres_en_cours'
+
     const { error: errUp } = await supabase
       .from('devis')
-      .update({
-        sections_finales: sectionsFinales,
-        total_ht,
-        total_ttc,
-        statut: 'metres_en_cours',
-      })
+      .update(champsMaj)
       .eq('id', devisId)
     if (errUp) throw errUp
 

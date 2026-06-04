@@ -69,6 +69,13 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
   // sections courantes (la sauvegarde differee envoie toujours le dernier etat).
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sectionsRef = useRef<SectionDevis[]>(sectionsInitiales)
+  // Drapeau "a vraiment modifie" (bug 4 vague 2) : faux au montage, passe a true
+  // des qu'Olivier modifie reellement le devis (quantite, vocal, description,
+  // remplacement). Sert a NE PAS sauvegarder sur une simple consultation (ouvrir
+  // puis avancer vers le recap sans rien changer) : sinon la route retrograderait
+  // le statut "Devis envoye" en "Devis en cours". Une ref (pas un state) : aucune
+  // incidence sur le rendu.
+  const aModifieRef = useRef(false)
 
   // Le miroir suit l'etat : la sauvegarde differee lira toujours la derniere valeur.
   useEffect(() => {
@@ -145,7 +152,9 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
       }
       return copie
     })
-    // Edit utilisateur : on programme la sauvegarde automatique differee.
+    // Edit utilisateur reel : on marque le devis comme modifie et on programme la
+    // sauvegarde automatique differee.
+    aModifieRef.current = true
     planifierSauvegarde()
   }
 
@@ -186,6 +195,8 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
     // Sauvegarde explicite : on annule un auto-save en attente (la reponse vocale
     // va ramener des sections autoritaires, qu'un debounce en retard ecraserait).
     annulerAutoSave()
+    // Dictee des metres = vraie modification.
+    aModifieRef.current = true
     try {
       const fd = new FormData()
       fd.append('devisId', devisId)
@@ -231,6 +242,13 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
     // Sauvegarde explicite finale : on annule un auto-save en attente (on envoie
     // ici l'etat complet juste avant de naviguer).
     annulerAutoSave()
+    // Garde consultation (bug 4 vague 2) : si rien n'a ete modifie depuis le
+    // montage, on NE sauvegarde PAS (rien a persister) et on navigue directement.
+    // Evite de retrograder un "Devis envoye" sur une simple consultation.
+    if (!aModifieRef.current) {
+      router.push(`/chantiers/${chantierId}/devis/recap`)
+      return
+    }
     setEnregistrement(true)
     try {
       const fd = new FormData()
@@ -272,6 +290,8 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
     // Sauvegarde explicite : on annule un auto-save en attente (cet envoi porte
     // l'etat complet, quantites comprises).
     annulerAutoSave()
+    // Edition d'une description = vraie modification.
+    aModifieRef.current = true
     setSavingDescription(true)
     try {
       // Met à jour le state local.
@@ -344,6 +364,8 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
     // Sauvegarde explicite : on annule un auto-save en attente (cet envoi porte
     // l'etat complet, quantites comprises).
     annulerAutoSave()
+    // Remplacement d'article = vraie modification.
+    aModifieRef.current = true
     const precedentes = sections
     const sectionsMaj = sections.map((s) => ({
       ...s,
