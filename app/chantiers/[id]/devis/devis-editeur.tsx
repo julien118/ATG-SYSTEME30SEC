@@ -60,6 +60,12 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
   const [articlesBiblio, setArticlesBiblio] = useState<ArticleRemplacable[] | null>(null)
   const [chargementBiblio, setChargementBiblio] = useState(false)
   const [rechercheKey, setRechercheKey] = useState<string | null>(null)
+  // Suppression d'article (point 12, vague 2) : cible en attente de confirmation
+  // ({sIdx, aIdx, libelle}) ; non null => pop-up de confirmation affiche.
+  const [suppressionCible, setSuppressionCible] = useState<
+    { sIdx: number; aIdx: number; libelle: string } | null
+  >(null)
+  const [suppression, setSuppression] = useState(false)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -406,6 +412,55 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
     }
   }
 
+  // ---------- Phase A : suppression d'article (point 12, vague 2) ----------
+
+  // Supprime l'article cible apres confirmation : retire la ligne (et la SECTION
+  // si elle devient vide), persiste via la route metres-vocaux (mode save) et
+  // rollback si l'enregistrement echoue (meme patron que choisirRemplacement).
+  async function confirmerSuppression() {
+    if (!suppressionCible || suppression) return
+    const { sIdx, aIdx } = suppressionCible
+    // Sauvegarde explicite : on annule un auto-save en attente.
+    annulerAutoSave()
+    setSuppression(true)
+    const precedentes = sections
+    // Retire l'article ; si la section n'a plus d'article, on retire la section.
+    const sectionsMaj = sections
+      .map((s, i) => {
+        if (i !== sIdx) return s
+        return { ...s, articles: s.articles.filter((_, j) => j !== aIdx) }
+      })
+      .filter((s) => s.articles.length > 0)
+
+    setSections(sectionsMaj)
+    setSuppressionCible(null)
+    // Les index changent apres suppression : on ferme toute edition/recherche
+    // d'article ouverte pour ne pas viser une cle d'index perimee.
+    setEditingKey(null)
+    setRechercheKey(null)
+
+    try {
+      const fd = new FormData()
+      fd.append('devisId', devisId)
+      fd.append('sections', JSON.stringify(sectionsMaj))
+      const res = await fetch('/api/devis/metres-vocaux', {
+        method: 'POST',
+        body: fd,
+      })
+      if (!res.ok) {
+        const t = await res.text()
+        throw new Error(t || `Erreur ${res.status}`)
+      }
+      toast.show('Article supprimé', 'success')
+    } catch (e) {
+      // Rollback : on restaure l'etat d'avant si la persistance a echoue.
+      setSections(precedentes)
+      toast.show((e as Error).message ?? 'Échec de la suppression', 'error')
+    } finally {
+      setSuppression(false)
+    }
+  }
+
   if (phase === 'technique') {
     const totalArticles = sections.reduce((acc, s) => acc + s.articles.length, 0)
     return (
@@ -513,6 +568,17 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
                               </svg>
                               Remplacer l&apos;article
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => setSuppressionCible({ sIdx, aIdx, libelle: a.libelle })}
+                              className="text-[11px] text-red-600 hover:underline inline-flex items-center gap-1"
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                              Supprimer l&apos;article
+                            </button>
                           </div>
                           {rechercheKey === editKey && (
                             <RechercheArticle
@@ -531,6 +597,44 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
             </section>
           ))}
         </main>
+
+        {/* Pop-up de confirmation de suppression (point 12, style coherent avec
+            DeleteChantierModal). */}
+        {suppressionCible && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+            <div
+              className="absolute inset-0 bg-black/40"
+              onClick={() => { if (!suppression) setSuppressionCible(null) }}
+            />
+            <div className="relative w-full sm:max-w-sm bg-white rounded-t-2xl sm:rounded-2xl p-6 pb-safe animate-slide-up sm:animate-scale-in">
+              <h3 className="text-lg font-bold text-foreground mb-2">
+                Supprimer cet article ?
+              </h3>
+              <p className="text-gray-500 text-sm mb-6">
+                L&apos;article <span className="font-medium text-foreground">&quot;{suppressionCible.libelle}&quot;</span> sera
+                retiré du devis.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSuppressionCible(null)}
+                  disabled={suppression}
+                  className="btn-tertiary flex-1"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmerSuppression}
+                  disabled={suppression}
+                  className="flex-1 inline-flex items-center justify-center rounded-xl px-6 py-3 bg-red-600 text-white font-semibold transition-all active:scale-97 disabled:opacity-50"
+                >
+                  {suppression ? 'Suppression...' : 'Supprimer'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Sticky CTA Phase A → B */}
         <div className="fixed bottom-0 inset-x-0 z-40 px-5 py-4 pb-safe bg-white border-t border-border">
