@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import LogoLink from '@/components/LogoLink'
 import RapportClient from './rapport-client'
 import { ATG_USER_ID } from '@/lib/atg'
@@ -28,8 +29,11 @@ export default async function RapportPage({ params }: { params: { id: string } }
     .single()
 
   // Etape C : un devis existe-t-il deja pour ce chantier ? Si oui, le bouton du CR
-  // devient "Continuer mon devis" (navigation simple, sans regenerer).
-  const { data: devisExistant } = await supabase
+  // devient "Continuer mon devis" (navigation simple, sans regenerer). Le client
+  // anon NE LIT PAS la table devis : on utilise l'admin UNIQUEMENT pour ce SELECT
+  // en lecture (le reste de la page reste en anon). Aucune ecriture.
+  const admin = createAdminClient()
+  const { data: devisExistant } = await admin
     .from('devis')
     .select('id')
     .eq('chantier_id', params.id)

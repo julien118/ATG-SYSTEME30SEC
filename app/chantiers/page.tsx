@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import LogoLink from '@/components/LogoLink'
 import ChantiersList from './chantiers-list'
 import { ATG_USER_ID, ATG_PROFIL } from '@/lib/atg'
@@ -19,17 +20,24 @@ export default async function ChantiersPage() {
   // celui défini en dur dans lib/atg.ts pour ne pas bloquer la démo.
   const safeProfile: Profile = profile ? (profile as Profile) : ATG_PROFIL
 
-  // On embarque l'existence d'un devis par chantier (etape C) en UNE requete
-  // (embedding PostgREST, pas de N+1) : sert au routing "Continuer mon devis".
+  // Chargement des chantiers via le client anon (inchange, fonctionne deja).
   const { data: rows } = await supabase
     .from('chantiers')
-    .select('*, devis(id)')
+    .select('*')
     .eq('user_id', ATG_USER_ID)
     .order('created_at', { ascending: false })
 
-  const chantiers = (rows ?? []).map((r: Chantier & { devis?: { id: string }[] }) => ({
+  // Existence d'un devis par chantier (etape C) : le client anon NE LIT PAS la
+  // table devis, on utilise donc l'admin UNIQUEMENT pour ce SELECT en lecture
+  // (un seul GET de tous les chantier_id ayant un devis). Sert au routing
+  // "Continuer mon devis". Aucune ecriture.
+  const admin = createAdminClient()
+  const { data: devisRows } = await admin.from('devis').select('chantier_id')
+  const chantiersAvecDevis = new Set((devisRows ?? []).map((d) => d.chantier_id as string))
+
+  const chantiers = (rows ?? []).map((r: Chantier) => ({
     ...r,
-    aDevis: Array.isArray(r.devis) && r.devis.length > 0,
+    aDevis: chantiersAvecDevis.has(r.id),
   }))
 
   return (
