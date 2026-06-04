@@ -44,6 +44,11 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
   const [starting, setStarting] = useState(false)
   const [chantierId, setChantierId] = useState(chantier?.id ?? null)
   const [error, setError] = useState<string | null>(null)
+  // Id de la visite tout juste CREEE : non null => on affiche le pop-up de
+  // confirmation « commencer la visite maintenant / plus tard » au lieu de
+  // naviguer immediatement (ce qui faisait « clignoter » la page). Concerne
+  // uniquement la creation, jamais une visite deja existante.
+  const [postCreateId, setPostCreateId] = useState<string | null>(null)
 
   // Autocompletion du nom de client/chantier (groupe C) : propositions chargees
   // UNE seule fois (lazy au premier focus), 100 % LECTURE. La creation/lien d'un
@@ -170,14 +175,15 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
   })
 
   // Enregistre la visite SANS la lancer : une creation part en "Planifié" (rdv a
-  // venir), une edition ne touche pas au statut. On atterrit sur la page de
-  // detail, ou le bouton "Commencer la visite" est disponible.
+  // venir). A la creation reussie, on N'EFFECTUE PLUS de navigation immediate
+  // (qui faisait atterrir sur la page detail, d'ou le « clignotement ») : on
+  // ouvre un pop-up de confirmation, la navigation se fait sur le choix d'Olivier.
   const handleSave = async () => {
     if (!clientNom.trim()) return
     setSaving(true)
     setError(null)
 
-    let id = chantierId
+    const id = chantierId
 
     if (!id) {
       const { data, error: insertError } = await supabase
@@ -192,13 +198,33 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
         setSaving(false)
         return
       }
-      id = data.id
-      setChantierId(id)
-    } else {
-      await supabase.from('chantiers').update(champsChantier()).eq('id', id)
+      // Creation OK : on memorise l'id (active l'auto-save) et on ouvre le pop-up.
+      setChantierId(data.id)
+      setPostCreateId(data.id)
+      setSaving(false)
+      return
     }
 
+    // Cas defensif (visite deja existante) : sauvegarde + retour au detail.
+    await supabase.from('chantiers').update(champsChantier()).eq('id', id)
     router.push(`/chantiers/${id}`)
+  }
+
+  // Pop-up post-creation : « Commencer la visite » passe la visite « En cours »
+  // (comme handleCommencerVisite) puis ouvre l'ecran de visite technique.
+  const demarrerVisiteCreee = async () => {
+    if (!postCreateId || starting) return
+    setStarting(true)
+    await supabase
+      .from('chantiers')
+      .update({ ...champsChantier(), statut: 'en_cours' })
+      .eq('id', postCreateId)
+    router.push(`/chantiers/${postCreateId}/visite`)
+  }
+
+  // Pop-up post-creation : « Plus tard » revient a l'accueil (liste des visites).
+  const remettreVisiteAPlusTard = () => {
+    router.push('/chantiers')
   }
 
   // Lance la visite : enregistre les dernieres infos ET passe le chantier
@@ -363,6 +389,49 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
             'Enregistrer la visite'
           )}
         </button>
+      )}
+
+      {/* Pop-up post-creation (style coherent avec DeleteChantierModal / fin de
+          visite) : s'affiche apres une creation reussie, sans rechargement
+          visible de la page (pas de « clignotement »). */}
+      {postCreateId && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative w-full sm:max-w-sm bg-white rounded-t-2xl sm:rounded-2xl p-6 pb-safe animate-slide-up sm:animate-scale-in">
+            <h3 className="text-lg font-bold text-foreground mb-2">
+              Visite enregistrée
+            </h3>
+            <p className="text-gray-500 text-sm mb-6">
+              Souhaitez-vous commencer la visite maintenant ?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={remettreVisiteAPlusTard}
+                disabled={starting}
+                className="btn-tertiary flex-1"
+              >
+                Plus tard
+              </button>
+              <button
+                onClick={demarrerVisiteCreee}
+                disabled={starting}
+                className="btn-primary flex-1 flex items-center justify-center gap-2"
+              >
+                {starting ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Démarrage...
+                  </>
+                ) : (
+                  'Commencer la visite'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
