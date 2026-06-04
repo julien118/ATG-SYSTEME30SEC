@@ -22,6 +22,7 @@
 import { anthropic } from '../anthropic'
 import { createAdminClient } from '../supabase/admin'
 import { redigerDepuisFaits } from './rediger'
+import { normaliser, jetonsSignificatifs } from './matching-nom'
 import type { RapportContenu } from '../types'
 
 const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
@@ -47,17 +48,8 @@ interface CompteRendu {
   pdfUrl: string | null
 }
 
-// ---------- Normalisation ----------
-
-function normaliser(s: string | null | undefined): string {
-  return (s ?? '')
-    .replace(/<[^>]+>/g, ' ')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
+// Normalisation + jetons : voir lib/assistant/matching-nom.ts (helpers partages
+// avec le domaine clients pour eviter toute divergence).
 
 // ---------- 1) Lecture seule des comptes rendus (compte test) ----------
 
@@ -147,19 +139,6 @@ export async function analyserQuestionCr(
 }
 
 // ---------- 2b) Filtres en code (pur, sur les vraies donnees) ----------
-
-// Civilites et particules a ignorer dans le matching de nom : sans elles,
-// "M. Dupont" doit retrouver le chantier "M. et Mme Dupont".
-const MOTS_VIDES_NOM = new Set([
-  'm', 'mr', 'mme', 'mlle', 'monsieur', 'madame', 'mademoiselle',
-  'et', 'de', 'du', 'des', 'la', 'le', 'les', 'l', 'aux', 'a',
-])
-
-function jetonsSignificatifs(nom: string): string[] {
-  return normaliser(nom)
-    .split(/[^a-z0-9]+/)
-    .filter((t) => t.length >= 2 && !MOTS_VIDES_NOM.has(t))
-}
 
 // Matching par jetons : TOUS les jetons significatifs de la recherche doivent
 // etre presents dans le nom du chantier (ex : "Dupont" -> "M. et Mme Dupont" ;

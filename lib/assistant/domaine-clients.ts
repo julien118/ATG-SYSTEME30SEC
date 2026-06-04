@@ -25,8 +25,11 @@
 // couvert par le domaine devis (intention liste_client). Domaines separes et nets.
 
 import { anthropic } from '../anthropic'
-import { listerContacts } from '../costructor'
+import { listerContacts, parseAdresseFr } from '../costructor'
+import { createAdminClient } from '../supabase/admin'
+import { ATG_USER_ID } from '../atg'
 import { redigerDepuisFaits } from './rediger'
+import { normaliser, jetonsSignificatifs } from './matching-nom'
 import type { CostructorContact } from '../types'
 
 const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
@@ -41,29 +44,26 @@ export interface IntentClients {
   ville: string | null
 }
 
-// ---------- Normalisation + jetons de nom ----------
-
-function normaliser(s: string | null | undefined): string {
-  return (s ?? '')
-    .replace(/<[^>]+>/g, ' ')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
+// Fiche unifiee (commit 1) : forme commune aux DEUX sources, pour que le matching,
+// le bornage et la redaction operent de maniere uniforme.
+//   - origine 'costructor' : un contact du compte Costructor (GET lecture seule) ;
+//   - origine 'app'        : une fiche/visite enregistree dans l'app (table
+//     chantiers, SELECT lecture seule) pas forcement encore poussee en devis.
+interface AdresseFiche {
+  rue: string | null
+  ville: string | null
+  code_postal: string | null
+  pays: string | null
+  principale: boolean
 }
-
-// Civilites et particules a ignorer dans le matching de nom (meme logique que les
-// comptes rendus) : "M. Dupont" doit retrouver "M. et Mme Dupont".
-const MOTS_VIDES_NOM = new Set([
-  'm', 'mr', 'mme', 'mlle', 'monsieur', 'madame', 'mademoiselle',
-  'et', 'de', 'du', 'des', 'la', 'le', 'les', 'l', 'aux', 'a',
-])
-
-function jetonsSignificatifs(nom: string): string[] {
-  return normaliser(nom)
-    .split(/[^a-z0-9]+/)
-    .filter((t) => t.length >= 2 && !MOTS_VIDES_NOM.has(t))
+interface FicheClient {
+  nom: string
+  emails: string[]
+  telephones: string[]
+  adresses: AdresseFiche[]
+  origine: 'costructor' | 'app'
+  type: 'client' | 'lead' | 'app'
+  statutApp: string | null // statut du chantier pour les fiches app, sinon null
 }
 
 // ---------- Extraction des coordonnees (champs reels) ----------
@@ -104,13 +104,88 @@ function adressesContact(c: CostructorContact) {
     .filter((a) => a.rue || a.ville || a.code_postal)
 }
 
-// ---------- Filtres en code (purs) ----------
+// ---------- Construction des fiches unifiees (2 sources, lecture seule) ----------
+
+// Costructor (GET) -> FicheClient. Le type est ramene a 'client' ou 'lead'.
+function ficheDepuisContact(c: CostructorContact): FicheClient {
+  return {
+    nom: nomContact(c),
+    emails: emailsContact(c),
+    telephones: telephonesContact(c),
+    adresses: adressesContact(c),
+    origine: 'costructor',
+    type: c.type === 'client' ? 'client' : 'lead',
+    statutApp: null,
+  }
+}
+
+// Forme partielle d'un chantier app utile a la fiche client.
+interface ChantierFiche {
+  client_nom: string | null
+  client_adresse: string | null
+  client_telephone: string | null
+  client_email: string | null
+  statut: string | null
+}
+
+// Fiche app (table chantiers) -> FicheClient. L'adresse libre est decoupee via
+// parseAdresseFr (rue/ville/cp) pour que la recherche par ville fonctionne aussi.
+function ficheDepuisChantier(ch: ChantierFiche): FicheClient {
+  const { street, city, zip } = parseAdresseFr(ch.client_adresse)
+  const adresses: AdresseFiche[] =
+    street || city || zip
+      ? [{ rue: street || null, ville: city || null, code_postal: zip || null, pays: 'FR', principale: true }]
+      : []
+  return {
+    nom: (ch.client_nom ?? '').trim() || '(sans nom)',
+    emails: ch.client_email ? [ch.client_email] : [],
+    telephones: ch.client_telephone ? [ch.client_telephone] : [],
+    adresses,
+    origine: 'app',
+    type: 'app',
+    statutApp: ch.statut ?? null,
+  }
+}
+
+// Charge les fiches de l'app (table chantiers, SELECT lecture seule, filtre user
+// ATG). Aucune ecriture. On ecarte les chantiers sans nom exploitable.
+async function chargerFichesApp(): Promise<FicheClient[]> {
+  const sb = createAdminClient()
+  const { data, error } = await sb
+    .from('chantiers')
+    .select('client_nom, client_adresse, client_telephone, client_email, statut')
+    .eq('user_id', ATG_USER_ID)
+  if (error) return []
+  return (data as ChantierFiche[] | null ?? [])
+    .filter((ch) => (ch.client_nom ?? '').trim())
+    .map(ficheDepuisChantier)
+}
+
+// Fusion + dedup par nom normalise, COSTRUCTOR PRIORITAIRE (1re occurrence
+// gardee) : une meme personne presente dans les deux sources n'apparait qu'une
+// fois, via son contact Costructor (canonique). Une fiche app-only reste.
+function fusionnerEtDedupliquer(
+  costructor: FicheClient[],
+  app: FicheClient[],
+): FicheClient[] {
+  const vus = new Set<string>()
+  const out: FicheClient[] = []
+  for (const f of [...costructor, ...app]) {
+    const cle = normaliser(f.nom)
+    if (!cle || vus.has(cle)) continue
+    vus.add(cle)
+    out.push(f)
+  }
+  return out
+}
+
+// ---------- Filtres en code (purs, sur FicheClient) ----------
 
 // Matching par jetons : TOUS les jetons significatifs de la recherche doivent
-// etre presents dans le nom du contact. Repli sur l'inclusion brute si la
-// recherche ne contient que des civilites.
-function correspondNom(c: CostructorContact, recherche: string): boolean {
-  const cible = normaliser(nomContact(c))
+// etre presents dans le nom. Repli sur l'inclusion brute si la recherche ne
+// contient que des civilites. (Passe EXACTE ; le souple arrive au commit 2.)
+function correspondNom(f: FicheClient, recherche: string): boolean {
+  const cible = normaliser(f.nom)
   const r = normaliser(recherche)
   if (!r) return true
   const jetons = jetonsSignificatifs(recherche)
@@ -118,37 +193,40 @@ function correspondNom(c: CostructorContact, recherche: string): boolean {
   return jetons.every((t) => cible.includes(t))
 }
 
-function correspondVille(c: CostructorContact, ville: string): boolean {
+function correspondVille(f: FicheClient, ville: string): boolean {
   const v = normaliser(ville)
   if (!v) return true
-  return adressesContact(c).some((a) => normaliser(a.ville).includes(v))
+  return f.adresses.some((a) => normaliser(a.ville).includes(v))
 }
 
 // ---------- Bornage : resume vs coordonnees completes ----------
 
-// Resume BORNE d'un contact (pour les listes et les homonymes) : nom + ville +
-// un email et un telephone, pas toutes les coordonnees.
-function resumeContact(c: CostructorContact) {
-  const adr = adressesContact(c)
-  const principale = adr.find((a) => a.principale) ?? adr[0] ?? null
+// Resume BORNE d'une fiche (listes et homonymes) : nom + ville + un email + un
+// telephone + l'origine (Costructor ou app).
+function resumeContact(f: FicheClient) {
+  const principale = f.adresses.find((a) => a.principale) ?? f.adresses[0] ?? null
   return {
-    nom: nomContact(c),
+    nom: f.nom,
     ville: principale?.ville ?? null,
-    email: emailsContact(c)[0] ?? null,
-    telephone: telephonesContact(c)[0] ?? null,
+    email: f.emails[0] ?? null,
+    telephone: f.telephones[0] ?? null,
+    origine: f.origine,
   }
 }
 
-// Coordonnees COMPLETES d'un contact (un seul, petit) : tous emails, telephones,
-// adresses.
-function coordonneesCompletes(c: CostructorContact) {
-  return {
-    nom: nomContact(c),
-    type: c.type,
-    emails: emailsContact(c),
-    telephones: telephonesContact(c),
-    adresses: adressesContact(c),
+// Coordonnees COMPLETES d'une fiche (une seule, petit) : tous emails, telephones,
+// adresses. On expose le type (client/lead) seulement pour un contact Costructor
+// (info utile) ; l'origine app est signalee a part via le drapeau `origine_app`
+// des faits (pas ici, pour ne pas afficher de bruit type « Origine : costructor »).
+function coordonneesCompletes(f: FicheClient) {
+  const c: Record<string, unknown> = {
+    nom: f.nom,
+    emails: f.emails,
+    telephones: f.telephones,
+    adresses: f.adresses,
   }
+  if (f.origine === 'costructor') c.type = f.type
+  return c
 }
 
 // ---------- 1) Analyse de la question (Claude -> intent JSON) ----------
@@ -210,14 +288,16 @@ export async function repondreQuestionClients(
   question: string,
   contactsPreCharges?: CostructorContact[],
 ): Promise<ReponseClients> {
-  const tous = contactsPreCharges ?? (await listerContacts())
+  const contactsCostructor = contactsPreCharges ?? (await listerContacts())
   const intent = await analyserQuestionClients(question)
 
-  // Liste "mes clients" : PRECISE, restreinte aux vrais clients (type 'client').
+  // Liste "mes clients" : PRECISE, restreinte aux VRAIS clients Costructor
+  // (type 'client'). On n'y ajoute PAS les fiches app : une visite planifiee
+  // n'est pas encore un client (decision validee).
   if (intent.intention === 'liste_clients') {
-    let base = tous.filter((c) => c.type === 'client')
-    if (intent.ville) base = base.filter((c) => correspondVille(c, intent.ville!))
-    base = [...base].sort((a, b) => nomContact(a).localeCompare(nomContact(b)))
+    let base = contactsCostructor.filter((c) => c.type === 'client').map(ficheDepuisContact)
+    if (intent.ville) base = base.filter((f) => correspondVille(f, intent.ville!))
+    base = [...base].sort((a, b) => a.nom.localeCompare(b.nom))
     const faits = {
       mode: 'liste_clients',
       nombre_de_clients: base.length,
@@ -229,17 +309,34 @@ export async function repondreQuestionClients(
     return { reponse, nbContacts: base.length }
   }
 
-  // Fiche / recherche par nom : LARGE, dans les contacts humains (client + lead).
-  let base = tous.filter((c) => c.type === 'client' || c.type === 'lead')
-  if (intent.client) base = base.filter((c) => correspondNom(c, intent.client!))
-  if (intent.ville) base = base.filter((c) => correspondVille(c, intent.ville!))
+  // Fiche / recherche par nom : LARGE, dans les DEUX sources fusionnees :
+  //   - contacts humains Costructor (client + lead, GET lecture seule) ;
+  //   - fiches de l'app (table chantiers, SELECT lecture seule).
+  // Dedup par nom, Costructor prioritaire. On NE deverse jamais tout au modele :
+  // on filtre d'abord par nom (et ville), puis bornage.
+  const fichesCostructor = contactsCostructor
+    .filter((c) => c.type === 'client' || c.type === 'lead')
+    .map(ficheDepuisContact)
+  const fichesApp = await chargerFichesApp()
+  const unifiees = fusionnerEtDedupliquer(fichesCostructor, fichesApp)
+
+  let base = unifiees
+  if (intent.client) base = base.filter((f) => correspondNom(f, intent.client!))
+  if (intent.ville) base = base.filter((f) => correspondVille(f, intent.ville!))
 
   let faits: unknown
   if (!intent.client) {
     // Aucun nom fourni : on ne fabrique pas de fiche, on invite a preciser.
     faits = { mode: 'aucun_nom', message: 'aucun nom de client n\'a ete fourni dans la question' }
   } else if (base.length === 1) {
-    faits = { mode: 'fiche_client', client: coordonneesCompletes(base[0]) }
+    // Signal d'origine (point 3) : si la fiche vient de l'app et n'est pas encore
+    // poussee en devis, on le signale au redacteur (champ origine_app).
+    const seule = base[0]
+    faits = {
+      mode: 'fiche_client',
+      client: coordonneesCompletes(seule),
+      origine_app: seule.origine === 'app',
+    }
   } else if (base.length === 0) {
     faits = { mode: 'aucun_resultat', recherche: intent.client, ville: intent.ville }
   } else {
