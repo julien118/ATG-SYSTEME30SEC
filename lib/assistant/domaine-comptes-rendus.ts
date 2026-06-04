@@ -174,6 +174,67 @@ function correspondClient(cr: CompteRendu, client: string): boolean {
   return jetons.every((t) => cible.includes(t))
 }
 
+// ---------- Matching SOUPLE (bug 2 vague 2 : repli si l'exact ne trouve rien) ----------
+// Utilise UNIQUEMENT en secours, et signale au redacteur que la correspondance
+// est approchante (le redacteur invite alors a confirmer le bon chantier). On
+// peut se permettre cette souplesse car on est en LECTURE SEULE : au pire on
+// montre un CR qu'Olivier reconnait comme pas le bon.
+
+// Distance d'edition (Levenshtein) classique, en programmation dynamique.
+function distanceEdition(a: string, b: string): number {
+  if (a === b) return 0
+  if (!a.length) return b.length
+  if (!b.length) return a.length
+  let ligne = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    let diagonale = ligne[0]
+    ligne[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const provisoire = ligne[j]
+      const cout = a[i - 1] === b[j - 1] ? 0 : 1
+      ligne[j] = Math.min(ligne[j] + 1, ligne[j - 1] + 1, diagonale + cout)
+      diagonale = provisoire
+    }
+  }
+  return ligne[b.length]
+}
+
+// Ecart de lettres tolere selon la longueur du plus long jeton : rien sur les
+// jetons courts (2-3, ou 1 faute change l'identite), 1 sur 4-6, 2 sur 7+.
+function toleranceJeton(t: string, u: string): number {
+  const maxLen = Math.max(t.length, u.length)
+  if (maxLen <= 3) return 0
+  if (maxLen <= 6) return 1
+  return 2
+}
+
+// Deux jetons concordent souplement si : egaux, OU l'un est sous-chaine de
+// l'autre, OU leur distance d'edition tient dans la tolerance liee a la longueur.
+function concordeJeton(t: string, u: string): boolean {
+  if (t === u) return true
+  if (u.includes(t) || t.includes(u)) return true
+  return distanceEdition(t, u) <= toleranceJeton(t, u)
+}
+
+// Nombre minimal de jetons concordants exige : TOUS si N <= 2 (sinon on
+// rapprocherait tout "Saint X" / "Résidence Y"), sinon la majorite ceil(2N/3).
+function seuilMajorite(n: number): number {
+  if (n <= 2) return n
+  return Math.ceil((n * 2) / 3)
+}
+
+// Correspondance souple : on tokenise les DEUX cotes ; un jeton de la recherche
+// "matche" s'il concorde souplement avec au moins un jeton du nom stocke ; on
+// exige le seuil de majorite. Jamais appele si la passe exacte a deja trouve.
+function correspondClientSouple(cr: CompteRendu, client: string): boolean {
+  const jetons = jetonsSignificatifs(client)
+  if (jetons.length === 0) return false
+  const jetonsCible = jetonsSignificatifs(cr.client)
+  if (jetonsCible.length === 0) return false
+  const concordants = jetons.filter((t) => jetonsCible.some((u) => concordeJeton(t, u))).length
+  return concordants >= seuilMajorite(jetons.length)
+}
+
 function dansPeriode(
   cr: CompteRendu,
   periode: { debut: string | null; fin: string | null },
@@ -260,9 +321,21 @@ export async function repondreQuestionCr(
   const tous = crPreCharges ?? (await listerComptesRendus())
   const intent = await analyserQuestionCr(question, aujourdhui)
 
-  // Filtres en code (pur).
+  // Filtres en code (pur). Le client se filtre en DEUX passes (bug 2) : exacte
+  // d'abord, puis souple en secours SEULEMENT si l'exacte ne trouve rien. Une
+  // correspondance trouvee en souple est signalee comme approchante.
   let base = tous
-  if (intent.client) base = base.filter((cr) => correspondClient(cr, intent.client!))
+  let correspondanceApprochante = false
+  if (intent.client) {
+    const exact = base.filter((cr) => correspondClient(cr, intent.client!))
+    if (exact.length > 0) {
+      base = exact
+    } else {
+      const souple = base.filter((cr) => correspondClientSouple(cr, intent.client!))
+      base = souple
+      correspondanceApprochante = souple.length > 0
+    }
+  }
   if (intent.periode) base = base.filter((cr) => dansPeriode(cr, intent.periode!))
   if (intent.motsCles) base = base.filter((cr) => correspondMotsCles(cr, intent.motsCles!))
 
@@ -277,7 +350,12 @@ export async function repondreQuestionCr(
 
   // Comptage : le code compte, l'assistant restitue le nombre.
   if (intent.intention === 'comptage') {
-    const faits = { mode: 'comptage', nombre_de_comptes_rendus: base.length, filtres }
+    const faits = {
+      mode: 'comptage',
+      nombre_de_comptes_rendus: base.length,
+      filtres,
+      correspondance_approchante: correspondanceApprochante,
+    }
     const reponse = await redigerDepuisFaits({
       question,
       sujet: 'comptes rendus de visite',
@@ -290,7 +368,12 @@ export async function repondreQuestionCr(
   let faits: unknown
   if (base.length === 1) {
     // Un seul compte rendu : contenu complet (petit, aucun risque de volumetrie).
-    faits = { mode: 'compte_rendu_detaille', filtres, compte_rendu: contenuComplet(base[0]) }
+    faits = {
+      mode: 'compte_rendu_detaille',
+      filtres,
+      correspondance_approchante: correspondanceApprochante,
+      compte_rendu: contenuComplet(base[0]),
+    }
   } else {
     // Plusieurs (ou zero) : resume borne. Si l'intention visait un CR precis mais
     // que plusieurs correspondent (homonymes), on invite a preciser.
@@ -299,6 +382,7 @@ export async function repondreQuestionCr(
       mode: ambiguite ? 'plusieurs_correspondances' : 'resume',
       nombre_de_comptes_rendus: base.length,
       filtres,
+      correspondance_approchante: correspondanceApprochante,
       invitation_a_preciser: ambiguite,
       comptes_rendus: base.slice(0, LIMITE_LISTE).map(resumeBorne),
       comptes_rendus_tronques: Math.max(0, base.length - LIMITE_LISTE),
