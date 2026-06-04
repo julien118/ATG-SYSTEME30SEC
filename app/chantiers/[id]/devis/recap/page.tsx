@@ -215,7 +215,11 @@ export default async function RecapDevisPage({
       {!dejaPouse && (
         <div className="fixed bottom-0 inset-x-0 z-40 px-5 py-4 pb-safe bg-white border-t border-border">
           <div className="max-w-4xl mx-auto">
-            <BoutonPousser devisId={devis.id} chantierId={params.id} />
+            <BoutonPousser
+              devisId={devis.id}
+              chantierId={params.id}
+              dejaEnvoye={!!devis.costructor_devis_id}
+            />
           </div>
         </div>
       )}
