@@ -33,6 +33,16 @@ export function jetonsSignificatifs(nom: string): string[] {
     .filter((t) => t.length >= 2 && !MOTS_VIDES_NOM.has(t))
 }
 
+// Detecte une question de SUIVI faisant reference au CLIENT precedent sans le
+// nommer (possessif ou pronom de 3e personne : « son adresse », « ses devis »,
+// « tout sur lui »...). Sert a reprendre le client du contexte de conversation.
+// On EXCLUT volontairement « mon / ma / mes » (1re personne = Olivier lui-meme,
+// donc questions GENERALES « mon prix moyen », « mes clients » : pas de reprise).
+export function faitReferenceClientPrecedent(question: string): boolean {
+  const q = normaliser(question)
+  return /\b(son|sa|ses|leur|leurs|lui|sien|sienne|siens|siennes)\b/.test(q)
+}
+
 // =============================================================
 // Matching SOUPLE (bug 2 vague 2 : repli si l'exact ne trouve rien)
 // =============================================================

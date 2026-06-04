@@ -14,8 +14,11 @@ export const maxDuration = 60
 
 export async function POST(request: Request) {
   try {
-    const { question } = (await request.json().catch(() => ({}))) as {
+    const { question, dernierClient } = (await request.json().catch(() => ({}))) as {
       question?: string
+      // Contexte de conversation (amelioration 3) : dernier client evoque, renvoye
+      // par le frontend pour resoudre les questions de suivi (« et son adresse ? »).
+      dernierClient?: string | null
     }
     if (!question || typeof question !== 'string' || !question.trim()) {
       return NextResponse.json({ error: 'Question manquante' }, { status: 400 })
@@ -24,9 +27,14 @@ export async function POST(request: Request) {
     // Date du jour cote serveur, pour interpreter les periodes relatives
     // ("ce mois-ci", "en mai"...) dans l'analyse de la question.
     const aujourdhui = new Date().toISOString().slice(0, 10)
-    const { reponse, domaine, nb } = await repondreAssistant(question.trim(), aujourdhui)
+    const { reponse, domaine, nb, clientContexte } = await repondreAssistant(
+      question.trim(),
+      aujourdhui,
+      { dernierClient: typeof dernierClient === 'string' ? dernierClient : null },
+    )
 
-    return NextResponse.json({ reponse, domaine, nb })
+    // `clientContexte` : a stocker cote frontend pour la prochaine question de suivi.
+    return NextResponse.json({ reponse, domaine, nb, clientContexte })
   } catch (e) {
     console.error('[api/assistant-devis]', e)
     return NextResponse.json(

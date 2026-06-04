@@ -22,7 +22,12 @@
 import { anthropic } from '../anthropic'
 import { createAdminClient } from '../supabase/admin'
 import { redigerDepuisFaits } from './rediger'
-import { normaliser, jetonsSignificatifs, correspondNomSouple } from './matching-nom'
+import {
+  normaliser,
+  jetonsSignificatifs,
+  correspondNomSouple,
+  faitReferenceClientPrecedent,
+} from './matching-nom'
 import type { RapportContenu } from '../types'
 
 const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
@@ -257,29 +262,43 @@ export async function comptesRendusPourClient(
 export interface ReponseCr {
   reponse: string
   nbComptesRendus: number
+  // Client effectivement traite (pour le contexte de conversation), repris du
+  // contexte si suivi. null si la question n'etait pas portee sur un client precis.
+  clientResolu: string | null
 }
 
 // Repond a une question sur les comptes rendus (lecture seule). `crPreCharges`
-// evite de relire la base a chaque appel dans les tests.
+// evite de relire la base a chaque appel dans les tests. `clientContexte` : dernier
+// client evoque, repris si la question est un suivi (« et le compte rendu ? »).
 export async function repondreQuestionCr(
   question: string,
   aujourdhui: string,
   crPreCharges?: CompteRendu[],
+  clientContexte?: string | null,
 ): Promise<ReponseCr> {
   const tous = crPreCharges ?? (await listerComptesRendus())
   const intent = await analyserQuestionCr(question, aujourdhui)
+
+  // Suivi de conversation : on reprend le client du contexte si la question fait
+  // reference au client precedent sans le nommer (« et son compte rendu ? »).
+  // Reprise EN CODE, deterministe. Une question qui nomme un client l'ignore.
+  const clientEffectif =
+    intent.client ??
+    (clientContexte && clientContexte.trim() && faitReferenceClientPrecedent(question)
+      ? clientContexte.trim()
+      : null)
 
   // Filtres en code (pur). Le client se filtre en DEUX passes (bug 2) : exacte
   // d'abord, puis souple en secours SEULEMENT si l'exacte ne trouve rien. Une
   // correspondance trouvee en souple est signalee comme approchante.
   let base = tous
   let correspondanceApprochante = false
-  if (intent.client) {
-    const exact = base.filter((cr) => correspondClient(cr, intent.client!))
+  if (clientEffectif) {
+    const exact = base.filter((cr) => correspondClient(cr, clientEffectif))
     if (exact.length > 0) {
       base = exact
     } else {
-      const souple = base.filter((cr) => correspondClientSouple(cr, intent.client!))
+      const souple = base.filter((cr) => correspondClientSouple(cr, clientEffectif))
       base = souple
       correspondanceApprochante = souple.length > 0
     }
@@ -291,7 +310,7 @@ export async function repondreQuestionCr(
   base = [...base].sort((a, b) => (b.dateISO ?? '').localeCompare(a.dateISO ?? ''))
 
   const filtres = {
-    client: intent.client,
+    client: clientEffectif,
     periode: intent.periode,
     mots_cles: intent.motsCles,
   }
@@ -309,7 +328,7 @@ export async function repondreQuestionCr(
       sujet: 'comptes rendus de visite',
       faits,
     })
-    return { reponse, nbComptesRendus: base.length }
+    return { reponse, nbComptesRendus: base.length, clientResolu: clientEffectif }
   }
 
   // Bascule du bornage.
@@ -342,5 +361,5 @@ export async function repondreQuestionCr(
     sujet: 'comptes rendus de visite',
     faits,
   })
-  return { reponse, nbComptesRendus: base.length }
+  return { reponse, nbComptesRendus: base.length, clientResolu: clientEffectif }
 }

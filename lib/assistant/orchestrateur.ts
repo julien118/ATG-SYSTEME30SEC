@@ -21,6 +21,16 @@ export interface ReponseOrchestrateur {
   reponse: string
   domaine: DomaineAssistant
   nb?: number // nombre d'elements pris en compte (devis ou comptes rendus)
+  // Dernier client traite, a renvoyer au frontend pour le CONTEXTE de conversation
+  // (questions de suivi « et son adresse ? »). null quand la question n'a pas porte
+  // sur un client precis (le frontend conserve alors son contexte courant).
+  clientContexte?: string | null
+}
+
+// Contexte de conversation transmis par le frontend (lecture seule, sans session
+// serveur) : le dernier client evoque, pour resoudre les questions de suivi.
+export interface ContexteConversation {
+  dernierClient?: string | null
 }
 
 const MESSAGE_INCONNU =
@@ -29,29 +39,40 @@ const MESSAGE_INCONNU =
 export async function repondreAssistant(
   question: string,
   aujourdhui: string,
+  contexte?: ContexteConversation,
 ): Promise<ReponseOrchestrateur> {
-  const domaine = await aiguiller(question)
+  const clientContexte = contexte?.dernierClient ?? null
+  // L'aiguilleur recoit le contexte (indice de routage des suivis) ; il ne fait
+  // que classer le sujet, il n'invente jamais de client.
+  const domaine = await aiguiller(question, clientContexte)
 
   if (domaine === 'comptes_rendus') {
-    const { reponse, nbComptesRendus } = await repondreQuestionCr(question, aujourdhui)
-    return { reponse, domaine, nb: nbComptesRendus }
+    const { reponse, nbComptesRendus, clientResolu } = await repondreQuestionCr(
+      question, aujourdhui, undefined, clientContexte,
+    )
+    return { reponse, domaine, nb: nbComptesRendus, clientContexte: clientResolu }
   }
 
   if (domaine === 'clients') {
-    const { reponse, nbContacts } = await repondreQuestionClients(question)
-    return { reponse, domaine, nb: nbContacts }
+    const { reponse, nbContacts, clientResolu } = await repondreQuestionClients(
+      question, undefined, clientContexte,
+    )
+    return { reponse, domaine, nb: nbContacts, clientContexte: clientResolu }
   }
 
   if (domaine === 'recap_client') {
-    const { reponse, nb } = await repondreRecapClient(question)
-    return { reponse, domaine, nb }
+    const { reponse, nb, clientResolu } = await repondreRecapClient(question, clientContexte)
+    return { reponse, domaine, nb, clientContexte: clientResolu }
   }
 
   if (domaine === 'inconnu') {
-    return { reponse: MESSAGE_INCONNU, domaine }
+    // On preserve le contexte courant (on ne le change pas sur une question hors sujet).
+    return { reponse: MESSAGE_INCONNU, domaine, clientContexte }
   }
 
-  // "devis" (et repli par defaut) : on delegue au moteur existant, inchange.
-  const { reponse, resultat } = await repondreQuestion(question, aujourdhui)
-  return { reponse, domaine: 'devis', nb: resultat.nbDevis }
+  // "devis" (et repli par defaut) : on delegue au moteur existant.
+  const { reponse, resultat, clientResolu } = await repondreQuestion(
+    question, aujourdhui, undefined, clientContexte,
+  )
+  return { reponse, domaine: 'devis', nb: resultat.nbDevis, clientContexte: clientResolu }
 }

@@ -17,7 +17,7 @@
 // prod. Ici, lecture seule stricte sur le compte test (COSTRUCTOR_API_KEY).
 
 import { anthropic } from './anthropic'
-import { correspondNomSouple } from './assistant/matching-nom'
+import { correspondNomSouple, faitReferenceClientPrecedent } from './assistant/matching-nom'
 
 const BASE_URL =
   process.env.COSTRUCTOR_API_BASE_URL || 'https://api.costructor.co/external/v1'
@@ -396,19 +396,39 @@ export interface ReponseAssistant {
   reponse: string
   intent: IntentRequete
   resultat: ResultatRequete
+  // Client effectivement traite (pour le contexte de conversation), repris du
+  // contexte si suivi. null si la question n'etait pas portee sur un client precis.
+  clientResolu: string | null
 }
 
 // Repond a une question en langage naturel sur l'historique des devis (lecture
 // seule). `aujourdhui` (YYYY-MM-DD) sert a interpreter les periodes relatives ;
 // `devisPreCharges` evite de relire la liste a chaque question dans les tests.
+// `clientContexte` : dernier client evoque, repris si la question est un suivi
+// (« et ses devis ? ») sans nommer personne.
 export async function repondreQuestion(
   question: string,
   aujourdhui: string,
   devisPreCharges?: DevisResume[],
+  clientContexte?: string | null,
 ): Promise<ReponseAssistant> {
   const devis = devisPreCharges ?? (await listerDevisCompteTest())
   const intent = await analyserQuestion(question, aujourdhui)
+
+  // Suivi de conversation : on reprend le client du contexte si la question fait
+  // reference au client precedent sans le nommer (« et ses devis ? »). Reprise EN
+  // CODE, deterministe. Les questions generales (« mon prix moyen », « mes 3 plus
+  // gros devis »...) n'ont pas de referent (« mon/mes ») => pas de reprise.
+  if (
+    !intent.client &&
+    clientContexte &&
+    clientContexte.trim() &&
+    faitReferenceClientPrecedent(question)
+  ) {
+    intent.client = clientContexte.trim()
+  }
+
   const resultat = executerRequete(intent, devis)
   const reponse = await redigerReponse(question, resultat)
-  return { reponse, intent, resultat }
+  return { reponse, intent, resultat, clientResolu: intent.client }
 }

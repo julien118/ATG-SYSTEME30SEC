@@ -29,7 +29,12 @@ import { listerContacts, parseAdresseFr } from '../costructor'
 import { createAdminClient } from '../supabase/admin'
 import { ATG_USER_ID } from '../atg'
 import { redigerDepuisFaits } from './rediger'
-import { normaliser, jetonsSignificatifs, correspondNomSouple } from './matching-nom'
+import {
+  normaliser,
+  jetonsSignificatifs,
+  correspondNomSouple,
+  faitReferenceClientPrecedent,
+} from './matching-nom'
 import type { CostructorContact } from '../types'
 
 const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
@@ -306,18 +311,23 @@ export async function analyserQuestionClients(question: string): Promise<IntentC
 export interface ReponseClients {
   reponse: string
   nbContacts: number
+  // Client effectivement traite (pour le contexte de conversation) : le nom
+  // recherche, repris du contexte si la question etait un suivi. null si aucun.
+  clientResolu: string | null
 }
 
 export async function repondreQuestionClients(
   question: string,
   contactsPreCharges?: CostructorContact[],
+  clientContexte?: string | null,
 ): Promise<ReponseClients> {
   const contactsCostructor = contactsPreCharges ?? (await listerContacts())
   const intent = await analyserQuestionClients(question)
 
   // Liste "mes clients" : PRECISE, restreinte aux VRAIS clients Costructor
   // (type 'client'). On n'y ajoute PAS les fiches app : une visite planifiee
-  // n'est pas encore un client (decision validee).
+  // n'est pas encore un client (decision validee). (Question generale : ne reprend
+  // jamais le contexte.)
   if (intent.intention === 'liste_clients') {
     let base = contactsCostructor.filter((c) => c.type === 'client').map(ficheDepuisContact)
     if (intent.ville) base = base.filter((f) => correspondVille(f, intent.ville!))
@@ -330,8 +340,18 @@ export async function repondreQuestionClients(
       clients_tronques: Math.max(0, base.length - LIMITE_LISTE),
     }
     const reponse = await redigerDepuisFaits({ question, sujet: 'fichier clients', faits })
-    return { reponse, nbContacts: base.length }
+    return { reponse, nbContacts: base.length, clientResolu: null }
   }
+
+  // Suivi de conversation : si la question fait reference au client precedent sans
+  // le nommer (« et son adresse ? ») et qu'un client a ete evoque juste avant, on
+  // le reprend (reprise EN CODE, deterministe, jamais une devinette du modele).
+  // Une question qui nomme un client l'ignore.
+  const clientEffectif =
+    intent.client ??
+    (clientContexte && clientContexte.trim() && faitReferenceClientPrecedent(question)
+      ? clientContexte.trim()
+      : null)
 
   // Fiche / recherche par nom : resolution dans les DEUX sources (Costructor
   // client+lead + fiches app), exacte puis souple, deleguee a trouverFichesClient
@@ -339,16 +359,16 @@ export async function repondreQuestionClients(
   // ville, comme avant. On NE deverse jamais tout au modele : on borne plus bas.
   let base: FicheClient[] = []
   let correspondanceApprochante = false
-  if (intent.client) {
-    const res = await trouverFichesClient(intent.client, contactsCostructor)
+  if (clientEffectif) {
+    const res = await trouverFichesClient(clientEffectif, contactsCostructor)
     base = res.fiches
     correspondanceApprochante = res.approchant
   }
   if (intent.ville) base = base.filter((f) => correspondVille(f, intent.ville!))
 
   let faits: unknown
-  if (!intent.client) {
-    // Aucun nom fourni : on ne fabrique pas de fiche, on invite a preciser.
+  if (!clientEffectif) {
+    // Aucun nom fourni (ni dans la question, ni en contexte) : on invite a preciser.
     faits = { mode: 'aucun_nom', message: 'aucun nom de client n\'a ete fourni dans la question' }
   } else if (base.length === 1) {
     // Signal d'origine (point 3) : si la fiche vient de l'app et n'est pas encore
@@ -361,11 +381,11 @@ export async function repondreQuestionClients(
       correspondance_approchante: correspondanceApprochante,
     }
   } else if (base.length === 0) {
-    faits = { mode: 'aucun_resultat', recherche: intent.client, ville: intent.ville }
+    faits = { mode: 'aucun_resultat', recherche: clientEffectif, ville: intent.ville }
   } else {
     faits = {
       mode: 'plusieurs_correspondances',
-      recherche: intent.client,
+      recherche: clientEffectif,
       nombre: base.length,
       invitation_a_preciser: true,
       correspondance_approchante: correspondanceApprochante,
@@ -375,5 +395,5 @@ export async function repondreQuestionClients(
   }
 
   const reponse = await redigerDepuisFaits({ question, sujet: 'fichier clients', faits })
-  return { reponse, nbContacts: base.length }
+  return { reponse, nbContacts: base.length, clientResolu: clientEffectif }
 }

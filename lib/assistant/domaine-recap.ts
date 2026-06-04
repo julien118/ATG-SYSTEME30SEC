@@ -24,6 +24,7 @@ import {
 } from './domaine-clients'
 import { comptesRendusPourClient } from './domaine-comptes-rendus'
 import { devisPourClient } from '../devis-historique'
+import { faitReferenceClientPrecedent } from './matching-nom'
 
 const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 // Bornage par section : on ne deverse jamais tout au modele.
@@ -33,6 +34,9 @@ const MAX_DEVIS = 10
 export interface ReponseRecap {
   reponse: string
   nb: number
+  // Client effectivement traite (pour le contexte de conversation), repris du
+  // contexte si la demande de recap ne nommait personne. null si aucun.
+  clientResolu: string | null
 }
 
 // Prompt DEDIE au recap : 3 sections, anti-hallucination stricte.
@@ -70,13 +74,22 @@ async function rediger(question: string, faits: unknown): Promise<string> {
 
 // Recap complet d'un client en une question. Resout le client une seule fois,
 // rassemble les 3 sources, construit un FAITS unique, redige une seule fois.
-export async function repondreRecapClient(question: string): Promise<ReponseRecap> {
-  // 1. Nom du client (on reutilise l'analyse du domaine clients).
+export async function repondreRecapClient(
+  question: string,
+  clientContexte?: string | null,
+): Promise<ReponseRecap> {
+  // 1. Nom du client (on reutilise l'analyse du domaine clients). Suivi de
+  // conversation : si la demande de recap ne nomme personne (« et tout sur lui ? »)
+  // mais qu'un client a ete evoque juste avant, on le reprend (EN CODE).
   const intent = await analyserQuestionClients(question)
-  const nom = (intent.client ?? '').trim()
+  const nom =
+    (intent.client ?? '').trim() ||
+    (clientContexte && clientContexte.trim() && faitReferenceClientPrecedent(question)
+      ? clientContexte.trim()
+      : '')
   if (!nom) {
     const reponse = await rediger(question, { mode: 'aucun_nom' })
-    return { reponse, nb: 0 }
+    return { reponse, nb: 0, clientResolu: null }
   }
 
   // 2. Resolution du client UNE seule fois (exact puis souple, dedup).
@@ -89,7 +102,7 @@ export async function repondreRecapClient(question: string): Promise<ReponseReca
       recherche: nom,
       candidats: fiches.map(resumeContact),
     })
-    return { reponse, nb: fiches.length }
+    return { reponse, nb: fiches.length, clientResolu: nom }
   }
 
   // Identite cible : nom canonique de la fiche unique, sinon le nom demande (edge
@@ -106,7 +119,7 @@ export async function repondreRecapClient(question: string): Promise<ReponseReca
   // Edge : aucune fiche ET aucun CR/devis -> aucun client.
   if (!fiche && cr.nombre === 0 && dv.nombre === 0) {
     const reponse = await rediger(question, { mode: 'aucun', recherche: nom })
-    return { reponse, nb: 0 }
+    return { reponse, nb: 0, clientResolu: nom }
   }
 
   // 4. Objet FAITS unique (borne par section).
@@ -131,5 +144,5 @@ export async function repondreRecapClient(question: string): Promise<ReponseReca
   }
 
   const reponse = await rediger(question, faits)
-  return { reponse, nb: cr.nombre + dv.nombre }
+  return { reponse, nb: cr.nombre + dv.nombre, clientResolu: nomCible }
 }
