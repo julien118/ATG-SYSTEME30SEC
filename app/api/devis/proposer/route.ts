@@ -14,7 +14,10 @@ import type { ArticleBibliotheque, CaptureItem } from '@/lib/types'
 
 export async function POST(request: Request) {
   try {
-    const { chantierId } = await request.json()
+    const { chantierId, regenerer } = (await request.json()) as {
+      chantierId?: string
+      regenerer?: boolean
+    }
     if (!chantierId) {
       return NextResponse.json({ error: 'chantierId manquant' }, { status: 400 })
     }
@@ -31,6 +34,26 @@ export async function POST(request: Request) {
       .single()
     if (errC || !chantier) {
       return NextResponse.json({ error: 'Chantier introuvable' }, { status: 404 })
+    }
+
+    // GARDE ANTI-PERTE (etape C) : si un devis existe deja pour ce chantier, on NE
+    // regenere PAS — sinon on ecraserait le travail d'Olivier (metres, ajustements,
+    // remplacements d'articles). On renvoie le devis existant tel quel, SANS toucher
+    // a sections_finales et SANS appeler Claude. La regeneration n'a lieu que si elle
+    // est demandee EXPLICITEMENT (regenerer === true). Filet serveur, en plus de l'UI.
+    if (!regenerer) {
+      const { data: existant } = await supabase
+        .from('devis')
+        .select('id, sections_finales, sections_proposees')
+        .eq('chantier_id', chantierId)
+        .maybeSingle()
+      if (existant) {
+        return NextResponse.json({
+          devisId: existant.id,
+          sections: existant.sections_finales ?? existant.sections_proposees ?? [],
+          reutilise: true,
+        })
+      }
     }
 
     // Récupère les transcriptions vocales du chantier.
