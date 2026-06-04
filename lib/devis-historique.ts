@@ -17,6 +17,7 @@
 // prod. Ici, lecture seule stricte sur le compte test (COSTRUCTOR_API_KEY).
 
 import { anthropic } from './anthropic'
+import { correspondNomSouple } from './assistant/matching-nom'
 
 const BASE_URL =
   process.env.COSTRUCTOR_API_BASE_URL || 'https://api.costructor.co/external/v1'
@@ -62,6 +63,9 @@ export interface ResultatRequete {
   nbDevis: number
   devis: DevisResume[] // devis correspondants (tries selon l'intention)
   agregat: { type: string; valeurCentimes: number | null; valeurNombre: number | null } | null
+  // true quand le client a ete retrouve en matching SOUPLE (faute de frappe) et
+  // pas en exact : le redacteur invite alors a confirmer le bon client.
+  correspondanceApprochante: boolean
 }
 
 // ---------- Normalisation + détection de typologie ----------
@@ -217,7 +221,23 @@ export function executerRequete(
   devis: DevisResume[],
 ): ResultatRequete {
   let base = devis
-  if (intent.client) base = base.filter((d) => correspondClient(d, intent.client!))
+  // Client : passe EXACTE d'abord (inclusion de sous-chaine, comportement
+  // historique), puis passe SOUPLE en secours si l'exacte ne trouve rien (faute
+  // de frappe / variante, ex « Lemoinne » vs « Lemoine »), via le module partage
+  // matching-nom. Une correspondance trouvee en souple est signalee comme
+  // approchante (le redacteur invite a confirmer). Le souple ne se declenche que
+  // sur la dimension CLIENT ; typologie/periode s'appliquent ensuite, inchanges.
+  let correspondanceApprochante = false
+  if (intent.client) {
+    const exact = base.filter((d) => correspondClient(d, intent.client!))
+    if (exact.length > 0) {
+      base = exact
+    } else {
+      const souple = base.filter((d) => correspondNomSouple(intent.client!, d.clientNom))
+      base = souple
+      correspondanceApprochante = souple.length > 0
+    }
+  }
   if (intent.typologie) base = base.filter((d) => correspondTypologie(d, intent.typologie!))
   if (intent.periode) {
     const { debut, fin } = intent.periode
@@ -264,6 +284,7 @@ export function executerRequete(
     nbDevis: base.length,
     devis: devisOrdonnes,
     agregat,
+    correspondanceApprochante,
   }
 }
 
@@ -277,6 +298,7 @@ function construireFaits(resultat: ResultatRequete) {
   const LIMITE_LISTE = 20
   return {
     nombre_de_devis: resultat.nbDevis,
+    correspondance_approchante: resultat.correspondanceApprochante,
     agregat: resultat.agregat
       ? {
           type: resultat.agregat.type,
@@ -308,6 +330,7 @@ ${JSON.stringify(faits, null, 2)}
 REGLES STRICTES :
 - N'invente AUCUN chiffre. Tous les montants, moyennes et comptes que tu cites doivent venir EXACTEMENT des FAITS ci-dessus (champ "agregat" ou "montant_ht" des devis). Ne recalcule rien toi-meme.
 - Si "nombre_de_devis" vaut 0, dis clairement qu'aucun devis ne correspond a la demande, sans inventer.
+- Si "correspondance_approchante" vaut true, le nom de client demande ne correspond pas exactement a celui des devis trouves (faute de frappe ou variante). Cite le nom EXACT du client tel qu'il figure dans les devis (champ "client") et invite Olivier a confirmer que c'est bien le bon client (ex : "j'ai trouve des devis pour <nom exact>, est-ce bien ce client ?"). N'invente aucun nom.
 - Reprends les montants tels quels (format euros fourni). Tu peux citer le client, la date, la typologie et le numero des devis.
 - Si "devis_tronques" est superieur a 0, precise que tu ne montres que les premiers (par ex. les 20 premiers).
 - Reste factuel et bref. Pas de relance commerciale, pas de conseil non demande. Tu ne fais que consulter et restituer.
