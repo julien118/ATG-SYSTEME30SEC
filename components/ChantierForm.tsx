@@ -11,7 +11,8 @@ import {
   toDateInput,
 } from '@/lib/utils'
 import AddressAutocomplete from './AddressAutocomplete'
-import type { Chantier } from '@/lib/types'
+import ClientAutocomplete from './ClientAutocomplete'
+import type { Chantier, ContactRecherche, PropositionContact } from '@/lib/types'
 
 interface ChantierFormProps {
   chantier?: Chantier | null
@@ -43,6 +44,72 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
   const [starting, setStarting] = useState(false)
   const [chantierId, setChantierId] = useState(chantier?.id ?? null)
   const [error, setError] = useState<string | null>(null)
+
+  // Autocompletion du nom de client/chantier (groupe C) : propositions chargees
+  // UNE seule fois (lazy au premier focus), 100 % LECTURE. La creation/lien d'un
+  // contact reste au push du devis (garde-fou compte test).
+  const [propositions, setPropositions] = useState<PropositionContact[] | null>(null)
+  const [chargementContacts, setChargementContacts] = useState(false)
+
+  function normaliserNom(s: string): string {
+    return (s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim()
+  }
+
+  // Charge les propositions : contacts Costructor (GET /api/contacts, lecture seule)
+  // + anciennes visites de l'app (Supabase chantiers). Fusion + dedup par nom
+  // (Costructor prioritaire). Non bloquant : un echec ne gene pas la saisie.
+  async function chargerPropositions() {
+    if (propositions || chargementContacts) return
+    setChargementContacts(true)
+    try {
+      const res = await fetch('/api/contacts')
+      const data = res.ok ? await res.json() : { contacts: [] }
+      const costructor: PropositionContact[] = (data.contacts ?? []).map((c: ContactRecherche) => ({
+        nom: c.nom,
+        ville: c.ville,
+        email: c.email,
+        telephone: c.telephone,
+        adresse: c.adresse,
+        source: 'costructor' as const,
+      }))
+      const { data: chs } = await supabase
+        .from('chantiers')
+        .select('client_nom, client_adresse, client_telephone, client_email')
+        .eq('user_id', userId)
+      const app: PropositionContact[] = (chs ?? [])
+        .filter((c) => (c.client_nom ?? '').trim())
+        .map((c) => ({
+          nom: (c.client_nom as string).trim(),
+          ville: null,
+          email: c.client_email ?? null,
+          telephone: c.client_telephone ?? null,
+          adresse: c.client_adresse ?? null,
+          source: 'app' as const,
+        }))
+      const vus = new Set<string>()
+      const fusion: PropositionContact[] = []
+      for (const p of [...costructor, ...app]) {
+        const cle = normaliserNom(p.nom)
+        if (!cle || vus.has(cle)) continue
+        vus.add(cle)
+        fusion.push(p)
+      }
+      setPropositions(fusion)
+    } catch {
+      setPropositions([])
+    } finally {
+      setChargementContacts(false)
+    }
+  }
+
+  // Preremplit les coordonnees a partir du contact choisi (sans ecraser un champ
+  // par une valeur absente). Le lien reel se fait au push (dedup email/tel/nom).
+  function selectionnerContact(p: PropositionContact) {
+    setClientNom(p.nom)
+    if (p.adresse) setClientAdresse(p.adresse)
+    if (p.telephone) setClientTelephone(p.telephone)
+    if (p.email) setClientEmail(p.email)
+  }
 
   // Un chantier deja "Planifié" (page de detail) propose le bouton "Commencer
   // la visite" en plus de l'enregistrement des infos.
@@ -126,15 +193,14 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
         <label htmlFor="client_nom" className="block text-sm font-medium text-foreground mb-1.5">
           Nom du client / chantier <span className="text-red-400">*</span>
         </label>
-        <input
-          id="client_nom"
-          type="text"
+        <ClientAutocomplete
           value={clientNom}
-          onChange={(e) => setClientNom(e.target.value)}
+          onChange={setClientNom}
+          onSelect={selectionnerContact}
+          onFirstFocus={chargerPropositions}
+          propositions={propositions}
+          chargement={chargementContacts}
           onBlur={autoSave}
-          placeholder="Ex: M. Martin, Résidence Les Oliviers..."
-          className="input-ionnyx"
-          autoFocus
         />
       </div>
 
