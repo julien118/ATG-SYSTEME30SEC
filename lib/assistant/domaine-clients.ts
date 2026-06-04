@@ -29,7 +29,7 @@ import { listerContacts, parseAdresseFr } from '../costructor'
 import { createAdminClient } from '../supabase/admin'
 import { ATG_USER_ID } from '../atg'
 import { redigerDepuisFaits } from './rediger'
-import { normaliser, jetonsSignificatifs } from './matching-nom'
+import { normaliser, jetonsSignificatifs, correspondNomSouple } from './matching-nom'
 import type { CostructorContact } from '../types'
 
 const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
@@ -320,8 +320,21 @@ export async function repondreQuestionClients(
   const fichesApp = await chargerFichesApp()
   const unifiees = fusionnerEtDedupliquer(fichesCostructor, fichesApp)
 
+  // Passe EXACTE d'abord, puis passe SOUPLE en secours si elle ne trouve rien et
+  // qu'un nom est fourni (commit 2 : tolerance aux fautes, ex « Iohan » vs
+  // « lohan »). Une correspondance trouvee en souple est signalee comme approchante.
   let base = unifiees
-  if (intent.client) base = base.filter((f) => correspondNom(f, intent.client!))
+  let correspondanceApprochante = false
+  if (intent.client) {
+    const exact = base.filter((f) => correspondNom(f, intent.client!))
+    if (exact.length > 0) {
+      base = exact
+    } else {
+      const souple = base.filter((f) => correspondNomSouple(intent.client!, f.nom))
+      base = souple
+      correspondanceApprochante = souple.length > 0
+    }
+  }
   if (intent.ville) base = base.filter((f) => correspondVille(f, intent.ville!))
 
   let faits: unknown
@@ -336,6 +349,7 @@ export async function repondreQuestionClients(
       mode: 'fiche_client',
       client: coordonneesCompletes(seule),
       origine_app: seule.origine === 'app',
+      correspondance_approchante: correspondanceApprochante,
     }
   } else if (base.length === 0) {
     faits = { mode: 'aucun_resultat', recherche: intent.client, ville: intent.ville }
@@ -345,6 +359,7 @@ export async function repondreQuestionClients(
       recherche: intent.client,
       nombre: base.length,
       invitation_a_preciser: true,
+      correspondance_approchante: correspondanceApprochante,
       clients: base.slice(0, LIMITE_LISTE).map(resumeContact),
       clients_tronques: Math.max(0, base.length - LIMITE_LISTE),
     }
