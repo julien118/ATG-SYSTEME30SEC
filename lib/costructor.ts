@@ -221,6 +221,61 @@ function normaliserNom(s: string | null | undefined): string {
     .replace(/\s+/g, ' ')
 }
 
+// Civilités et connecteurs à ignorer dans la comparaison des noms : ils ne
+// distinguent pas deux personnes ("M. Dupont" = "Dupont").
+const JETONS_IGNORES = new Set([
+  'm', 'mr', 'mme', 'mlle', 'melle', 'monsieur', 'madame', 'mademoiselle',
+  'et', '&',
+])
+
+// Décompose un nom libre en ENSEMBLE de jetons signifiants, pour une comparaison
+// tolérante mais juste (bug 1 vague 2). On retire accents, casse, ponctuation
+// (. , - → espace, gère "M." et "Jean-Pierre") et les civilités/connecteurs.
+// L'ordre des jetons n'a pas d'importance (on renvoie un Set).
+function nomEnJetons(s: string | null | undefined): Set<string> {
+  const base = (s ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[.,\-]/g, ' ')
+  const jetons = base
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0 && !JETONS_IGNORES.has(t))
+  return new Set(jetons)
+}
+
+// Noms candidats d'un contact Costructor (toutes les façons d'écrire son nom),
+// pour tester la concordance contre un nom libre saisi côté chantier.
+function candidatsNomContact(c: CostructorContact): string[] {
+  return [
+    c.fullName,
+    c.companyName,
+    c.firstName && c.lastName ? `${c.firstName} ${c.lastName}` : null,
+    c.firstName && c.lastName ? `${c.lastName} ${c.firstName}` : null,
+  ].filter(Boolean) as string[]
+}
+
+// Égalité STRICTE d'ensembles de jetons : a et b désignent le même nom si, une
+// fois normalisés, ils ont exactement les mêmes jetons signifiants (ordre
+// indifférent). Strict par prudence : "Dupont" ≠ "Jean Dupont" → on crée un
+// doublon (visible/réparable) plutôt que de risquer une fusion irréversible
+// (DELETE /contacts = 405). Un ensemble vide ne concorde avec rien.
+function memesJetons(a: Set<string>, b: Set<string>): boolean {
+  if (a.size === 0 || b.size === 0 || a.size !== b.size) return false
+  return Array.from(a).every((j) => b.has(j))
+}
+
+// Vrai si le contact porte le même nom que `nomLibre` (sur l'un de ses
+// candidats). Utilisé aux étapes 1/2/3 du matching pour exiger la concordance
+// du nom EN PLUS du signal fort (email/téléphone) ou du critère ville/cp.
+function contactPorteLeNom(nomLibre: string, c: CostructorContact): boolean {
+  const jetonsLibre = nomEnJetons(nomLibre)
+  return candidatsNomContact(c).some((cand) =>
+    memesJetons(jetonsLibre, nomEnJetons(cand)),
+  )
+}
+
 // Best-effort parse d'une adresse française "7 Rue Marie de Luxembourg 41100 Vendôme".
 // Extrait le code postal 5 chiffres : avant = rue, après = ville.
 export function parseAdresseFr(adresse: string | null | undefined): {
@@ -282,42 +337,39 @@ export async function trouverOuCreerContact(
   const villeNorm = normaliserNom(city)
   const cpNorm = (zip ?? '').replace(/\D/g, '')
 
-  // 1) Email exact (signal fort)
+  // 1) Email exact (signal fort) ET nom concordant. Bug 1 (vague 2) : un email
+  // partagé ne suffit plus à relier ; le nom doit aussi concorder, sinon on
+  // crée. Si l'email matche mais pas le nom, on NE relie PAS et on continue.
   if (emailNorm) {
     const match = contacts.find((c) => {
-      if (normaliserEmail(c.email) === emailNorm) return true
-      return (c.emails ?? []).some(
-        (e) => normaliserEmail(e.email) === emailNorm,
-      )
+      const emailConcorde =
+        normaliserEmail(c.email) === emailNorm ||
+        (c.emails ?? []).some((e) => normaliserEmail(e.email) === emailNorm)
+      return emailConcorde && contactPorteLeNom(input.client_nom, c)
     })
     if (match) return { contactId: match.id, cree: false, matchType: 'email' }
   }
 
-  // 2) Téléphone normalisé (signal fort)
+  // 2) Téléphone normalisé (signal fort) ET nom concordant (même logique).
   if (phoneNorm.length >= 9) {
     const match = contacts.find((c) => {
-      if (normaliserTelephone(c.phone) === phoneNorm) return true
-      return (c.phones ?? []).some(
-        (p) => normaliserTelephone(p.phone) === phoneNorm,
-      )
+      const telConcorde =
+        normaliserTelephone(c.phone) === phoneNorm ||
+        (c.phones ?? []).some((p) => normaliserTelephone(p.phone) === phoneNorm)
+      return telConcorde && contactPorteLeNom(input.client_nom, c)
     })
     if (match) return { contactId: match.id, cree: false, matchType: 'phone' }
   }
 
-  // 3) Nom exact + second critère concordant (T4 : signal faible sécurisé).
+  // 3) Nom concordant + second critère concordant (T4 : signal faible sécurisé).
   // On n'autorise la fusion par nom QUE si la dictée fournit une ville ou un CP
   // ET que ce second critère concorde avec celui du contact candidat. Sans
-  // second critère disponible/concordant → pas de fusion → création.
+  // second critère disponible/concordant → pas de fusion → création. La
+  // concordance du nom passe par `contactPorteLeNom` (tolérant aux civilités),
+  // pour se comporter comme aux étapes 1 et 2.
   if (nomNorm && (villeNorm || cpNorm)) {
     const match = contacts.find((c) => {
-      const candidats = [
-        c.fullName,
-        c.companyName,
-        c.firstName && c.lastName ? `${c.firstName} ${c.lastName}` : null,
-        c.firstName && c.lastName ? `${c.lastName} ${c.firstName}` : null,
-      ].filter(Boolean) as string[]
-      const nomConcorde = candidats.some((n) => normaliserNom(n) === nomNorm)
-      if (!nomConcorde) return false
+      if (!contactPorteLeNom(input.client_nom, c)) return false
       const { ville, cp } = villeCpContact(c)
       const cpConcorde = !!cpNorm && !!cp && cp === cpNorm
       const villeConcorde = !!villeNorm && !!ville && ville === villeNorm
