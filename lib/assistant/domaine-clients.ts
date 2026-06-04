@@ -49,14 +49,14 @@ export interface IntentClients {
 //   - origine 'costructor' : un contact du compte Costructor (GET lecture seule) ;
 //   - origine 'app'        : une fiche/visite enregistree dans l'app (table
 //     chantiers, SELECT lecture seule) pas forcement encore poussee en devis.
-interface AdresseFiche {
+export interface AdresseFiche {
   rue: string | null
   ville: string | null
   code_postal: string | null
   pays: string | null
   principale: boolean
 }
-interface FicheClient {
+export interface FicheClient {
   nom: string
   emails: string[]
   telephones: string[]
@@ -199,11 +199,35 @@ function correspondVille(f: FicheClient, ville: string): boolean {
   return f.adresses.some((a) => normaliser(a.ville).includes(v))
 }
 
+// Resolution d'un client par NOM dans les DEUX sources fusionnees (contacts
+// Costructor client+lead + fiches app), passe EXACTE puis SOUPLE en secours, sans
+// filtre ville. Factorisee ici pour etre reutilisee par repondreQuestionClients
+// ET par le recap client (lecture seule : GET contacts + SELECT chantiers).
+// `approchant` = true quand la resolution a du passer par le souple (faute de
+// frappe). Renvoie [] si aucun nom n'est fourni.
+export async function trouverFichesClient(
+  nom: string,
+  contactsPreCharges?: CostructorContact[],
+): Promise<{ fiches: FicheClient[]; approchant: boolean }> {
+  const contacts = contactsPreCharges ?? (await listerContacts())
+  const fichesCostructor = contacts
+    .filter((c) => c.type === 'client' || c.type === 'lead')
+    .map(ficheDepuisContact)
+  const fichesApp = await chargerFichesApp()
+  const unifiees = fusionnerEtDedupliquer(fichesCostructor, fichesApp)
+  const r = (nom ?? '').trim()
+  if (!r) return { fiches: [], approchant: false }
+  const exact = unifiees.filter((f) => correspondNom(f, r))
+  if (exact.length > 0) return { fiches: exact, approchant: false }
+  const souple = unifiees.filter((f) => correspondNomSouple(r, f.nom))
+  return { fiches: souple, approchant: souple.length > 0 }
+}
+
 // ---------- Bornage : resume vs coordonnees completes ----------
 
 // Resume BORNE d'une fiche (listes et homonymes) : nom + ville + un email + un
 // telephone + l'origine (Costructor ou app).
-function resumeContact(f: FicheClient) {
+export function resumeContact(f: FicheClient) {
   const principale = f.adresses.find((a) => a.principale) ?? f.adresses[0] ?? null
   return {
     nom: f.nom,
@@ -218,7 +242,7 @@ function resumeContact(f: FicheClient) {
 // adresses. On expose le type (client/lead) seulement pour un contact Costructor
 // (info utile) ; l'origine app est signalee a part via le drapeau `origine_app`
 // des faits (pas ici, pour ne pas afficher de bruit type « Origine : costructor »).
-function coordonneesCompletes(f: FicheClient) {
+export function coordonneesCompletes(f: FicheClient) {
   const c: Record<string, unknown> = {
     nom: f.nom,
     emails: f.emails,
@@ -309,31 +333,16 @@ export async function repondreQuestionClients(
     return { reponse, nbContacts: base.length }
   }
 
-  // Fiche / recherche par nom : LARGE, dans les DEUX sources fusionnees :
-  //   - contacts humains Costructor (client + lead, GET lecture seule) ;
-  //   - fiches de l'app (table chantiers, SELECT lecture seule).
-  // Dedup par nom, Costructor prioritaire. On NE deverse jamais tout au modele :
-  // on filtre d'abord par nom (et ville), puis bornage.
-  const fichesCostructor = contactsCostructor
-    .filter((c) => c.type === 'client' || c.type === 'lead')
-    .map(ficheDepuisContact)
-  const fichesApp = await chargerFichesApp()
-  const unifiees = fusionnerEtDedupliquer(fichesCostructor, fichesApp)
-
-  // Passe EXACTE d'abord, puis passe SOUPLE en secours si elle ne trouve rien et
-  // qu'un nom est fourni (commit 2 : tolerance aux fautes, ex « Iohan » vs
-  // « lohan »). Une correspondance trouvee en souple est signalee comme approchante.
-  let base = unifiees
+  // Fiche / recherche par nom : resolution dans les DEUX sources (Costructor
+  // client+lead + fiches app), exacte puis souple, deleguee a trouverFichesClient
+  // (factorisee, reutilisee par le recap client). On applique ENSUITE le filtre
+  // ville, comme avant. On NE deverse jamais tout au modele : on borne plus bas.
+  let base: FicheClient[] = []
   let correspondanceApprochante = false
   if (intent.client) {
-    const exact = base.filter((f) => correspondNom(f, intent.client!))
-    if (exact.length > 0) {
-      base = exact
-    } else {
-      const souple = base.filter((f) => correspondNomSouple(intent.client!, f.nom))
-      base = souple
-      correspondanceApprochante = souple.length > 0
-    }
+    const res = await trouverFichesClient(intent.client, contactsCostructor)
+    base = res.fiches
+    correspondanceApprochante = res.approchant
   }
   if (intent.ville) base = base.filter((f) => correspondVille(f, intent.ville!))
 

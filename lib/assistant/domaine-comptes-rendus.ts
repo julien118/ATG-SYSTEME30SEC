@@ -229,6 +229,29 @@ function contenuComplet(cr: CompteRendu) {
   }
 }
 
+// ---------- Donnees comptes rendus d'UN client (pour le recap, additif) ----------
+
+// Renvoie les comptes rendus d'un client (resumes bornes), pour le recap client.
+// Passe EXACTE puis SOUPLE en secours (meme matching que repondreQuestionCr) ;
+// tri date decroissante. N'ANALYSE PAS la question et NE REDIGE PAS : c'est une
+// fonction de DONNEES (lecture seule, SELECT). repondreQuestionCr reste inchange.
+export async function comptesRendusPourClient(
+  nom: string,
+  crPreCharges?: CompteRendu[],
+): Promise<{ nombre: number; approchant: boolean; comptesRendus: ReturnType<typeof resumeBorne>[] }> {
+  const tous = crPreCharges ?? (await listerComptesRendus())
+  const r = (nom ?? '').trim()
+  if (!r) return { nombre: 0, approchant: false, comptesRendus: [] }
+  let base = tous.filter((cr) => correspondClient(cr, r))
+  let approchant = false
+  if (base.length === 0) {
+    base = tous.filter((cr) => correspondClientSouple(cr, r))
+    approchant = base.length > 0
+  }
+  base = [...base].sort((a, b) => (b.dateISO ?? '').localeCompare(a.dateISO ?? ''))
+  return { nombre: base.length, approchant, comptesRendus: base.map(resumeBorne) }
+}
+
 // ---------- 3) Orchestration du domaine ----------
 
 export interface ReponseCr {

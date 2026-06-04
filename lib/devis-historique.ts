@@ -350,6 +350,46 @@ export async function redigerReponse(
   return rep.content[0]?.type === 'text' ? rep.content[0].text.trim() : ''
 }
 
+// ---------- Donnees devis d'UN client (pour le recap, additif) ----------
+
+// Renvoie les devis d'un client (resumes + total HT en euros), pour le recap
+// client. Passe EXACTE puis SOUPLE en secours (meme matching que la recherche
+// devis ciblee) ; tri date decroissante. N'ANALYSE PAS la question et NE REDIGE
+// PAS : fonction de DONNEES (lecture seule, GET). repondreQuestion reste inchange.
+export async function devisPourClient(
+  nom: string,
+  devisPreCharges?: DevisResume[],
+): Promise<{
+  nombre: number
+  approchant: boolean
+  total_ht: string
+  devis: { numero: string | null; date: string | null; montant_ht: string; typologie: string; statut: string }[]
+}> {
+  const tous = devisPreCharges ?? (await listerDevisCompteTest())
+  const r = (nom ?? '').trim()
+  if (!r) return { nombre: 0, approchant: false, total_ht: fmtEuros(0), devis: [] }
+  let base = tous.filter((d) => correspondClient(d, r))
+  let approchant = false
+  if (base.length === 0) {
+    base = tous.filter((d) => correspondNomSouple(r, d.clientNom))
+    approchant = base.length > 0
+  }
+  base = [...base].sort((a, b) => (b.dateISO ?? '').localeCompare(a.dateISO ?? ''))
+  const totalC = base.reduce((s, d) => s + d.montantHTCentimes, 0)
+  return {
+    nombre: base.length,
+    approchant,
+    total_ht: fmtEuros(totalC),
+    devis: base.map((d) => ({
+      numero: d.numero,
+      date: d.dateISO,
+      montant_ht: fmtEuros(d.montantHTCentimes),
+      typologie: d.typologie.variante ?? d.typologie.famille ?? 'non determinee',
+      statut: d.statut,
+    })),
+  }
+}
+
 // ---------- Orchestrateur ----------
 
 export interface ReponseAssistant {
