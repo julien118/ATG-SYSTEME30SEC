@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { ATG_USER_ID } from '@/lib/atg'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 // Mode démo ATG : pas de check d'auth, RLS désactivée côté DB.
 // On garde toutefois la vérification que le chantier appartient bien
@@ -78,7 +79,20 @@ export async function DELETE(
     }
   }
 
-  // Delete chantier (cascades to capture_items and rapports)
+  // Nettoie le PDF du compte rendu dans le bucket `rapports` (chemin deterministe
+  // `<chantierId>.pdf`, cf persistRapportPdf). La cascade DB supprime la LIGNE
+  // rapports, mais pas le FICHIER storage : sans ce nettoyage, le PDF resterait
+  // orphelin. On utilise le client ADMIN (service_role) car ce bucket est ecrit
+  // par le service_role (l'anon n'a pas forcement le droit d'y supprimer).
+  // Best-effort : un echec ici ne bloque pas la suppression du chantier.
+  try {
+    const admin = createAdminClient()
+    await admin.storage.from('rapports').remove([`${chantierId}.pdf`])
+  } catch {
+    // Silencieux : le PDF orphelin n'empeche rien, on n'echoue pas la suppression.
+  }
+
+  // Delete chantier (cascades to capture_items, rapports et devis)
   const { error } = await supabase
     .from('chantiers')
     .delete()

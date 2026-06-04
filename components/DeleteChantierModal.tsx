@@ -28,7 +28,7 @@ export default function DeleteChantierModal({ chantierNom, onConfirm, onCancel }
         </h3>
         <p className="text-gray-500 text-sm mb-6">
           Le chantier <span className="font-medium text-foreground">&quot;{chantierNom}&quot;</span> sera
-          définitivement supprimé avec toutes ses photos, enregistrements et son rapport.
+          définitivement supprimé avec toutes ses photos, enregistrements, son rapport et son devis.
         </p>
 
         <div className="flex gap-3">
