@@ -17,6 +17,7 @@ import {
 import { assertCompteJulien, bannerCompte } from './costructor-compte'
 import type {
   ArticleRemplacable,
+  ContactRecherche,
   CostructorContact,
   CostructorProduct,
   CostructorQuotePayload,
@@ -163,6 +164,40 @@ export async function listerArticlesBibliotheque(): Promise<ArticleRemplacable[]
 // liste complète.
 export async function listerContacts(): Promise<CostructorContact[]> {
   return costructorFetch<CostructorContact[]>('/contacts?_limit=1000')
+}
+
+// Liste nettoyee des contacts HUMAINS (type client + lead) pour l'autocompletion a
+// la creation de visite (groupe C). LECTURE SEULE (GET /contacts) : sert a proposer
+// et preremplir, jamais a ecrire. On expose nom + ville + coordonnees ; on ecarte
+// les contacts sans nom exploitable.
+export async function listerContactsRecherche(): Promise<ContactRecherche[]> {
+  const contacts = await listerContacts()
+  return contacts
+    .filter((c) => c.type === 'client' || c.type === 'lead')
+    .map((c) => {
+      const nom =
+        (c.fullName?.trim() || '') ||
+        [c.firstName, c.lastName].filter(Boolean).join(' ').trim() ||
+        (c.companyName?.trim() || '')
+      const adrs = c.addresses ?? []
+      const principale = adrs.find((a) => a.primary)?.address ?? adrs[0]?.address ?? null
+      const email =
+        (c.emails ?? []).find((e) => e.primary)?.email ?? (c.emails ?? [])[0]?.email ?? c.email ?? null
+      const telephone =
+        (c.phones ?? []).find((p) => p.primary)?.phone ?? (c.phones ?? [])[0]?.phone ?? c.phone ?? null
+      const adresse = principale
+        ? [principale.street, principale.postal_code, principale.city].filter(Boolean).join(' ').trim() || null
+        : null
+      return {
+        id: c.id,
+        nom,
+        ville: principale?.city ?? null,
+        email: email || null,
+        telephone: telephone || null,
+        adresse,
+      } as ContactRecherche
+    })
+    .filter((c) => c.nom.length > 0)
 }
 
 // Normalisations pour le matching.

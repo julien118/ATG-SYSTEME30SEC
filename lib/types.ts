@@ -197,6 +197,28 @@ export interface ArticleRemplacable {
   prix_vente: number // en euros
 }
 
+// Contact Costructor nettoye pour l'autocompletion a la creation de visite
+// (groupe C). LECTURE SEULE : sert a proposer et preremplir, jamais a ecrire.
+export interface ContactRecherche {
+  id: string
+  nom: string
+  ville: string | null
+  email: string | null
+  telephone: string | null
+  adresse: string | null // chaine "rue cp ville" pour preremplir le champ adresse
+}
+
+// Proposition unifiee pour l'autocompletion du nom de client/chantier : provient
+// soit des contacts Costructor, soit des anciennes visites de l'app (Supabase).
+export interface PropositionContact {
+  nom: string
+  ville: string | null
+  email: string | null
+  telephone: string | null
+  adresse: string | null
+  source: 'costructor' | 'app'
+}
+
 export interface CostructorContactEmail {
   email: string
   primary: boolean
