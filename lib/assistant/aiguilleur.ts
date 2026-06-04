@@ -29,13 +29,14 @@ Reponds STRICTEMENT en JSON valide (aucun texte autour, pas de markdown), schema
 
 DOMAINES :
 - "devis" : ses devis, montants, prix, chiffre d'affaires, typologies de travaux chiffrees. Exemples : "mon prix moyen sur les ravalements", "mes 3 plus gros devis", "le total de mes devis d'ITE", "les devis de M. Dupont", "combien j'ai devise pour tel client".
-- "comptes_rendus" : ses comptes rendus de visite de chantier, ses observations terrain, les points de vigilance releves, l'etat constate d'une façade, le nombre de visites. Exemples : "qu'avait-on note chez M. Dupont", "quels chantiers avaient des fissures", "le compte rendu de tel chantier", "combien de visites j'ai faites".
+- "comptes_rendus" : ses comptes rendus de visite de chantier, ses observations terrain, les points de vigilance releves, l'etat constate d'une façade, le nombre de visites. SYNONYMES de "compte rendu" a traiter pareil : "rapport" (de visite, de chantier), "CR", "bilan de visite", "compte-rendu". Exemples : "qu'avait-on note chez M. Dupont", "quels chantiers avaient des fissures", "le compte rendu de tel chantier", "le rapport de tel chantier", "quel est le rapport de M. Dupont", "le CR de M. Dupont", "le bilan de visite de tel chantier", "combien de visites j'ai faites".
 - "clients" : l'IDENTITE et les COORDONNEES de ses clients ou contacts (adresse, telephone, email, fiche), ou la liste de ses clients. Exemples : "l'adresse de M. Dupont", "le telephone de Mme Martin", "les coordonnees de tel client", "mes clients a Tours", "combien de clients j'ai".
 - "inconnu" : tout le reste (salutations, hors sujet, ou impossible a rattacher).
 
 REGLES DE DEPARTAGE (important) :
 - Un MONTANT ou des DEVIS, MEME avec un client nomme, => "devis" ("les devis de M. Dupont" => devis).
 - Une OBSERVATION / un constat terrain => "comptes_rendus".
+- Toute demande de la forme "le compte rendu / le rapport / le CR / le bilan (de visite) de X", "donne-moi le rapport de X", "quel est le rapport de X" => "comptes_rendus", QUEL QUE SOIT le nom X. Le nom X est TOUJOURS un chantier ou un client d'Olivier, MEME s'il ressemble a un nom celebre, religieux ou historique (ex : "Saint Thomas d'Aquin" est ici un NOM DE CHANTIER, pas le theologien ; "rapport" ne veut PAS dire ratio ou relation). Ne classe JAMAIS ces questions en "inconnu".
 - L'IDENTITE ou les COORDONNEES (adresse, telephone, email, fiche, liste de clients) => "clients".
 - Si la question n'a rien a voir avec ses devis, ses visites ou ses clients, reponds "inconnu".`
 }
