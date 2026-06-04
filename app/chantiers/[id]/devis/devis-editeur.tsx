@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ToastProvider'
 import Spinner from '@/components/Spinner'
-import type { ArticleRemplacable, SectionDevis } from '@/lib/types'
+import type { ArticleDevis, ArticleRemplacable, SectionDevis } from '@/lib/types'
 
 // Normalisation pour la recherche d'article : minuscules, accents retires.
 function normaliserRecherche(s: string): string {
@@ -412,6 +412,60 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
     }
   }
 
+  // ---------- Phase A : ajout d'article (point 12, vague 2) ----------
+  // Cle de barre de recherche distincte du remplacement (`sIdx::aIdx`) : on
+  // prefixe `add::` + l'index de section pour ne pas confondre quelle barre est
+  // ouverte.
+  function ouvrirAjout(sIdx: number) {
+    annulerEdition()
+    setRechercheKey(`add::${sIdx}`)
+    void chargerBiblio()
+  }
+
+  // Ajoute un NOUVEL article (choisi dans la bibliotheque) a la section : on
+  // reprend libelle, unite et prix unitaire du catalogue ; quantite = null
+  // (saisie en Phase B) ; description = libelle en repli (reeditable ensuite).
+  // Persistance via la route existante (mode save) + rollback (meme patron que
+  // choisirRemplacement). Anti-hallucination : c'est un VRAI article du catalogue.
+  async function ajouterArticle(sIdx: number, article: ArticleRemplacable) {
+    annulerAutoSave()
+    aModifieRef.current = true
+    const precedentes = sections
+    const nouvel: ArticleDevis = {
+      costructor_article_id: article.costructor_article_id,
+      libelle: article.libelle,
+      unite: article.unite,
+      prix_vente: article.prix_vente,
+      quantite: null,
+      description_technique: article.libelle,
+    }
+    const sectionsMaj = sections.map((s, i) =>
+      i === sIdx ? { ...s, articles: [...s.articles, nouvel] } : s,
+    )
+
+    setSections(sectionsMaj)
+    fermerRecherche()
+
+    try {
+      const fd = new FormData()
+      fd.append('devisId', devisId)
+      fd.append('sections', JSON.stringify(sectionsMaj))
+      const res = await fetch('/api/devis/metres-vocaux', {
+        method: 'POST',
+        body: fd,
+      })
+      if (!res.ok) {
+        const t = await res.text()
+        throw new Error(t || `Erreur ${res.status}`)
+      }
+      toast.show('Article ajouté', 'success')
+    } catch (e) {
+      // Rollback : on restaure l'etat d'avant si la persistance a echoue.
+      setSections(precedentes)
+      toast.show((e as Error).message ?? 'Échec de l\'ajout', 'error')
+    }
+  }
+
   // ---------- Phase A : suppression d'article (point 12, vague 2) ----------
 
   // Supprime l'article cible apres confirmation : retire la ligne (et la SECTION
@@ -594,6 +648,30 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
                   )
                 })}
               </ul>
+
+              {/* Ajout d'un article a cette section (point 12) : meme
+                  autocompletion sur la bibliotheque que « Remplacer l'article ». */}
+              <div className="mt-4 border-t border-border pt-3">
+                <button
+                  type="button"
+                  onClick={() => ouvrirAjout(sIdx)}
+                  className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  Ajouter un article
+                </button>
+                {rechercheKey === `add::${sIdx}` && (
+                  <RechercheArticle
+                    articles={articlesBiblio}
+                    chargement={chargementBiblio}
+                    onChoisir={(article) => ajouterArticle(sIdx, article)}
+                    onFermer={fermerRecherche}
+                  />
+                )}
+              </div>
             </section>
           ))}
         </main>
