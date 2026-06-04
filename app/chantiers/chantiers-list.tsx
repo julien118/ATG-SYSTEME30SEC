@@ -130,7 +130,7 @@ export default function ChantiersList({ chantiers }: ChantiersListProps) {
               key={chantier.id}
               chantier={chantier}
               statutAffiche={chantier.statutAffiche}
-              onLongPress={setDeleteTarget}
+              onDelete={setDeleteTarget}
             />
           ))}
         </div>
