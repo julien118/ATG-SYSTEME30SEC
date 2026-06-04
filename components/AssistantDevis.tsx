@@ -62,6 +62,10 @@ export default function AssistantDevis() {
   // (micro refuse ou transcription echouee). Le champ reste utilisable au clavier.
   const [transcription, setTranscription] = useState(false)
   const [erreurVocal, setErreurVocal] = useState('')
+  // Contexte de conversation (amelioration 3) : dernier client evoque, renvoye par
+  // l'API et re-transmis a la question suivante pour resoudre les suivis (« et son
+  // adresse ? »). Vit avec la conversation (remis a zero au remontage du widget).
+  const [dernierClient, setDernierClient] = useState<string | null>(null)
   const compteur = useRef(0)
   const finRef = useRef<HTMLDivElement>(null)
   const champRef = useRef<HTMLInputElement>(null)
@@ -87,7 +91,8 @@ export default function AssistantDevis() {
       const res = await fetch('/api/assistant-devis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
+        // On transmet le dernier client evoque pour les questions de suivi.
+        body: JSON.stringify({ question, dernierClient }),
       })
       const data = await res.json().catch(() => ({}))
       const reponse =
@@ -95,6 +100,11 @@ export default function AssistantDevis() {
           ? data.reponse
           : data.error || 'Désolé, je n\'ai pas pu répondre.'
       setMessages((m) => [...m, { id: compteur.current++, role: 'bot', texte: reponse }])
+      // On met a jour le contexte UNIQUEMENT si l'API a resolu un client (non null) :
+      // une question generale renvoie null et on conserve alors le contexte courant.
+      if (typeof data.clientContexte === 'string' && data.clientContexte) {
+        setDernierClient(data.clientContexte)
+      }
     } catch {
       setMessages((m) => [
         ...m,
