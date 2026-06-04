@@ -25,12 +25,11 @@ export default async function ChantierDetailPage({ params }: { params: { id: str
     redirect(`/chantiers/${params.id}/rapport`)
   }
 
-  // En cours : on reprend la visite.
-  if (statut === 'en_cours') {
-    redirect(`/chantiers/${params.id}/visite`)
-  }
-
-  // Planifié : on reste ici (detail + bouton "Commencer la visite" dans le form).
+  // Planifié ET En cours (tant que le rapport n'est pas genere, point 7) : on
+  // reste ici, sur l'ecran contact. C'est le passage oblige ; le form propose
+  // « Commencer » (planifie) ou « Continuer la visite » (en_cours). On NE redirige
+  // PLUS « en_cours » vers /visite : sinon Olivier ne repasserait jamais par le
+  // contact apres avoir commence ses notes.
 
   return (
     <div className="min-h-screen-safe bg-background">
@@ -44,7 +43,9 @@ export default async function ChantierDetailPage({ params }: { params: { id: str
       </header>
 
       <main className="px-5 py-6 max-w-lg mx-auto">
-        <h1 className="text-xl font-bold text-foreground mb-1">Visite planifiée</h1>
+        <h1 className="text-xl font-bold text-foreground mb-1">
+          {statut === 'en_cours' ? 'Visite en cours' : 'Visite planifiée'}
+        </h1>
         <p className="text-gray-400 text-sm mb-6">{(chantier as Chantier).client_nom}</p>
         <ChantierForm chantier={chantier as Chantier} userId={ATG_USER_ID} />
       </main>

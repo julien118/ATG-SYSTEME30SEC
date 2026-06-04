@@ -28,9 +28,9 @@ function getChantierHref(chantier: Chantier, statutAffiche: StatutAffiche) {
   if (chantier.statut === 'rapport_genere' || chantier.statut === 'termine') {
     return `/chantiers/${chantier.id}/rapport`
   }
-  // En cours : on reprend la visite.
-  if (chantier.statut === 'en_cours') return `/chantiers/${chantier.id}/visite`
-  // Planifié : page de detail avec le bouton "Commencer la visite".
+  // Planifié OU En cours (tant que le rapport n'est pas genere, point 7) : on
+  // passe TOUJOURS par l'ecran contact. C'est de la que le bouton « Commencer »
+  // ou « Continuer la visite » mene a l'ecran de visite technique.
   return `/chantiers/${chantier.id}`
 }
 

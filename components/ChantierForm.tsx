@@ -116,9 +116,10 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
     if (p.email) setClientEmail(p.email)
   }
 
-  // Un chantier deja "Planifié" (page de detail) propose le bouton "Commencer
-  // la visite" en plus de l'enregistrement des infos.
+  // Etat du chantier affiche dans le form (page de detail) : planifie => bouton
+  // « Commencer la visite » ; en_cours => bouton « Continuer la visite » (point 7).
   const estPlanifie = chantier?.statut === 'planifie'
+  const estEnCours = chantier?.statut === 'en_cours'
 
   // Persiste les champs courants du chantier existant (mise a jour seulement :
   // l'auto-save ne cree jamais de ligne, d'ou le garde-fou chantierId). Appele
@@ -237,6 +238,16 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
       .from('chantiers')
       .update({ ...champsChantier(), statut: 'en_cours' })
       .eq('id', chantierId)
+    router.push(`/chantiers/${chantierId}/visite`)
+  }
+
+  // Reprend une visite DEJA en cours (point 7) : on sauvegarde les derniers champs
+  // puis on ouvre l'ecran de visite. On NE change PAS le statut (deja en_cours).
+  const continuerVisite = async () => {
+    if (!chantierId || starting) return
+    setStarting(true)
+    setError(null)
+    await supabase.from('chantiers').update(champsChantier()).eq('id', chantierId)
     router.push(`/chantiers/${chantierId}/visite`)
   }
 
@@ -370,8 +381,28 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
             )}
           </button>
         </div>
+      ) : estEnCours ? (
+        // Visite DEJA en cours (point 7) : on la continue (ecran de visite), le
+        // statut reste « en_cours ». Les infos sont sauvegardees en permanence.
+        <button
+          onClick={continuerVisite}
+          disabled={!clientNom.trim() || starting}
+          className="btn-primary w-full text-lg py-4 mt-4"
+        >
+          {starting ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Ouverture...
+            </span>
+          ) : (
+            'Continuer la visite →'
+          )}
+        </button>
       ) : (
-        // Creation (ou chantier non planifié) : on enregistre la visite (Planifié).
+        // Creation (pas encore de chantierId) : on enregistre la visite (Planifié).
         <button
           onClick={handleSave}
           disabled={!clientNom.trim() || saving}
