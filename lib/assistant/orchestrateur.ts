@@ -15,6 +15,7 @@ import { repondreQuestion } from '../devis-historique'
 import { aiguiller, type DomaineAssistant } from './aiguilleur'
 import { repondreQuestionCr } from './domaine-comptes-rendus'
 import { repondreQuestionClients } from './domaine-clients'
+import { repondreRecapClient } from './domaine-recap'
 
 export interface ReponseOrchestrateur {
   reponse: string
@@ -39,6 +40,11 @@ export async function repondreAssistant(
   if (domaine === 'clients') {
     const { reponse, nbContacts } = await repondreQuestionClients(question)
     return { reponse, domaine, nb: nbContacts }
+  }
+
+  if (domaine === 'recap_client') {
+    const { reponse, nb } = await repondreRecapClient(question)
+    return { reponse, domaine, nb }
   }
 
   if (domaine === 'inconnu') {
