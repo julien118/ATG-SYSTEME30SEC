@@ -31,6 +31,9 @@ interface Props {
   chantierId: string
   devisId: string
   sectionsInitiales: SectionDevis[]
+  // Phase d'ouverture (point 13) : « metres » quand on revient du recap via la
+  // fleche « Saisir les metres » (?etape=metres). Defaut « technique ».
+  phaseInitiale?: Phase
 }
 
 function formatEUR(n: number): string {
@@ -41,11 +44,11 @@ function formatEUR(n: number): string {
   }).format(n)
 }
 
-export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }: Props) {
+export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, phaseInitiale }: Props) {
   const router = useRouter()
   const toast = useToast()
 
-  const [phase, setPhase] = useState<Phase>('technique')
+  const [phase, setPhase] = useState<Phase>(phaseInitiale ?? 'technique')
   const [sections, setSections] = useState<SectionDevis[]>(sectionsInitiales)
   const [etat, setEtat] = useState<EtatMicro>('pret')
   const [duree, setDuree] = useState(0)
@@ -742,15 +745,24 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales }:
 
   return (
     <>
-      <main className="flex-1 overflow-y-auto px-5 py-4 pb-44 max-w-2xl mx-auto w-full">
+      {/* Fleche retour (point 13) EN TETE A GAUCHE, pleine largeur (comme le
+          header), au meme emplacement que « Saisir les metres » du recap. Vert
+          (text-primary) et un peu plus gros pour la visibilite. Action inchangee :
+          revient a la proposition technique (Phase A). */}
+      <div className="flex-shrink-0 px-5 pt-3">
         <button
           type="button"
           onClick={() => setPhase('technique')}
-          className="mb-3 text-xs text-gray-500 underline"
+          className="flex items-center gap-1.5 -ml-1 p-1 text-primary hover:text-primary/80 transition-colors"
         >
-          ← Revoir la technique
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          <span className="text-sm font-medium">Revenir à la proposition technique</span>
         </button>
+      </div>
 
+      <main className="flex-1 overflow-y-auto px-5 pt-2 pb-44 max-w-2xl mx-auto w-full">
         <section className="mb-5 rounded-2xl border border-primary bg-primary/5 p-5">
           <p className="text-xs uppercase tracking-wide text-primary text-center mb-3 font-semibold">
             Saisie des métrés à la voix

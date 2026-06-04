@@ -17,8 +17,10 @@ export const revalidate = 0
 // Utilise admin client pour bypass RLS (mode démo single-tenant).
 export default async function DevisPage({
   params,
+  searchParams,
 }: {
   params: { id: string }
+  searchParams?: { etape?: string }
 }) {
   const supabase = createAdminClient()
 
@@ -89,6 +91,7 @@ export default async function DevisPage({
         chantierId={params.id}
         devisId={devis.id}
         sectionsInitiales={sections}
+        phaseInitiale={searchParams?.etape === 'metres' ? 'metres' : 'technique'}
       />
     </div>
   )

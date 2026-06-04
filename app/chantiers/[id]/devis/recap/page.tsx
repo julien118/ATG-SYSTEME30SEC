@@ -79,13 +79,16 @@ export default async function RecapDevisPage({
   return (
     <div className="min-h-screen-safe bg-background flex flex-col">
       <header className="sticky top-0 z-30 bg-white border-b border-border px-5 py-4 pt-safe flex items-center gap-3">
+        {/* Fleche retour (point 13) : ramene aux METRES (Phase B) via ?etape=metres,
+            avec le libelle « Saisir les metres » a cote du chevron. */}
         <Link
-          href={`/chantiers/${params.id}/devis`}
-          className="p-1 -ml-1 text-gray-400 hover:text-foreground transition-colors"
+          href={`/chantiers/${params.id}/devis?etape=metres`}
+          className="flex items-center gap-1.5 p-1 -ml-1 text-primary hover:text-primary/80 transition-colors"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>
+          <span className="text-sm font-medium whitespace-nowrap">Saisir les métrés</span>
         </Link>
         <div className="flex-1 min-w-0">
           <LogoLink width={120} height={28} />
