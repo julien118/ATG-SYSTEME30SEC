@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -115,7 +115,9 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
   // la visite" en plus de l'enregistrement des infos.
   const estPlanifie = chantier?.statut === 'planifie'
 
-  // Auto-save existing chantier on blur
+  // Persiste les champs courants du chantier existant (mise a jour seulement :
+  // l'auto-save ne cree jamais de ligne, d'ou le garde-fou chantierId). Appele
+  // par l'auto-save debounce (point 6).
   const autoSave = async () => {
     if (!chantierId) return
     await supabase
@@ -130,6 +132,32 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
       })
       .eq('id', chantierId)
   }
+
+  // Auto-save PERMANENT debounce (point 6, vague 2) : on persiste a chaque pause
+  // de frappe (~800 ms), sur le meme principe que l'auto-save des metres. Le
+  // bouton "Enregistrer les modifications" devient inutile et est retire.
+  // - anti-rafale : chaque frappe annule le timer precedent ;
+  // - nettoyage au demontage : pas de sauvegarde apres depart de l'ecran ;
+  // - skip du tout premier rendu : pas de reecriture inutile des valeurs initiales ;
+  // - uniquement si chantierId existe (en creation, rien a mettre a jour : c'est
+  //   le bouton "Enregistrer la visite" qui cree la premiere ligne).
+  const premierRenduRef = useRef(true)
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (premierRenduRef.current) {
+      premierRenduRef.current = false
+      return
+    }
+    if (!chantierId) return
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    autoSaveTimerRef.current = setTimeout(() => {
+      void autoSave()
+    }, 800)
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientNom, clientAdresse, clientTelephone, clientEmail, objetTravaux, dateJour, heure, chantierId])
 
   // Champs du chantier (hors statut), recopies a chaque ecriture.
   const champsChantier = () => ({
@@ -199,9 +227,7 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
           onSelect={selectionnerContact}
           onFirstFocus={chargerPropositions}
           propositions={propositions}
-          chargement={chargementContacts}
-          onBlur={autoSave}
-        />
+          chargement={chargementContacts}        />
       </div>
 
       {/* Adresse */}
@@ -211,9 +237,7 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
         </label>
         <AddressAutocomplete
           value={clientAdresse}
-          onChange={setClientAdresse}
-          onBlur={autoSave}
-        />
+          onChange={setClientAdresse}        />
       </div>
 
       {/* Téléphone */}
@@ -227,9 +251,7 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
           inputMode="tel"
           autoComplete="tel"
           value={clientTelephone}
-          onChange={(e) => setClientTelephone(e.target.value)}
-          onBlur={autoSave}
-          placeholder="Ex: 06 12 34 56 78"
+          onChange={(e) => setClientTelephone(e.target.value)}          placeholder="Ex: 06 12 34 56 78"
           className="input-ionnyx"
         />
       </div>
@@ -245,9 +267,7 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
           inputMode="email"
           autoComplete="email"
           value={clientEmail}
-          onChange={(e) => setClientEmail(e.target.value)}
-          onBlur={autoSave}
-          placeholder="Ex: martin@example.com"
+          onChange={(e) => setClientEmail(e.target.value)}          placeholder="Ex: martin@example.com"
           className="input-ionnyx"
         />
       </div>
@@ -260,9 +280,7 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
         <textarea
           id="objet_travaux"
           value={objetTravaux}
-          onChange={(e) => setObjetTravaux(e.target.value)}
-          onBlur={autoSave}
-          placeholder="Ex: Ravalement complet façade, ITE, peinture extérieure, traitement fissures..."
+          onChange={(e) => setObjetTravaux(e.target.value)}          placeholder="Ex: Ravalement complet façade, ITE, peinture extérieure, traitement fissures..."
           rows={3}
           className="input-ionnyx resize-none"
         />
@@ -279,16 +297,12 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
             id="date_visite_jour"
             type="date"
             value={dateJour}
-            onChange={(e) => setDateJour(e.target.value)}
-            onBlur={autoSave}
-            className="input-ionnyx flex-[2] min-w-0"
+            onChange={(e) => setDateJour(e.target.value)}            className="input-ionnyx flex-[2] min-w-0"
           />
           <select
             id="date_visite_heure"
             value={heure}
-            onChange={(e) => setHeure(e.target.value)}
-            onBlur={autoSave}
-            aria-label="Heure de la visite"
+            onChange={(e) => setHeure(e.target.value)}            aria-label="Heure de la visite"
             className="input-ionnyx flex-1 min-w-0"
           >
             {CRENEAUX.map((c) => (
@@ -307,8 +321,10 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
 
       {/* CTA */}
       {estPlanifie ? (
-        // Page de detail d'un chantier "Planifié" : action principale = commencer
-        // la visite ; action secondaire = enregistrer les modifications d'infos.
+        // Page de detail d'un chantier "Planifié" : seule action = commencer la
+        // visite. Les modifications d'infos sont desormais sauvegardees en
+        // permanence (auto-save debounce, point 6), donc plus de bouton
+        // "Enregistrer les modifications".
         <div className="space-y-3 mt-4">
           <button
             onClick={handleCommencerVisite}
@@ -326,13 +342,6 @@ export default function ChantierForm({ chantier, userId }: ChantierFormProps) {
             ) : (
               'Commencer la visite →'
             )}
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!clientNom.trim() || saving || starting}
-            className="btn-secondary w-full py-3"
-          >
-            {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
           </button>
         </div>
       ) : (
