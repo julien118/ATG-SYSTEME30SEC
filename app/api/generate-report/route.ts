@@ -27,7 +27,12 @@ export async function POST(request: Request) {
     }
   )
 
-  const { chantierId } = await request.json()
+  // `consignes` (amelioration 11) : consignes de modification optionnelles pour
+  // une regeneration. Absent/vide => generation identique a aujourd'hui.
+  const { chantierId, consignes } = (await request.json()) as {
+    chantierId: string
+    consignes?: string | null
+  }
 
   // Vérifie l'appartenance au user démo (RLS off, mais on garde le filtre).
   const { data: chantier } = await supabase
@@ -59,8 +64,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'No captures found' }, { status: 400 })
   }
 
-  // Build prompt
-  const userPrompt = buildUserPrompt(chantier as Chantier, captures as CaptureItem[])
+  // Build prompt (avec les consignes de modification si fournies, amelioration 11).
+  const userPrompt = buildUserPrompt(chantier as Chantier, captures as CaptureItem[], consignes)
 
   // Call Claude
   const response = await anthropic.messages.create({

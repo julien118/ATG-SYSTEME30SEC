@@ -27,6 +27,12 @@ RÈGLES DE RÉDACTION :
 - Points de vigilance : identifier les risques, contraintes et précautions pertinentes
 - Données client : recopier à l'IDENTIQUE depuis les informations fournies, ne rien inventer
 
+CONSIGNES DE MODIFICATION (si un bloc "CONSIGNES DE MODIFICATION D'OLIVIER" est présent) :
+- Applique ces consignes EXACTEMENT : ajoute, retire ou précise UNIQUEMENT ce qui est demandé.
+- N'invente AUCUN détail au-delà des consignes et des observations : pas de mesure, cause, surface, durée ni conséquence qui ne soit pas explicitement fournie.
+- Quand une consigne ajoute une information (ex : "la toiture est en mauvais état"), intègre-la SOBREMENT, sans broder ni extrapoler.
+- Les consignes sont une information fournie par le professionnel sur la réalité du chantier : tu les appliques, mais tu ne t'en sers JAMAIS comme prétexte pour inventer le reste.
+
 FORMAT DE SORTIE — JSON STRICT :
 Réponds UNIQUEMENT avec un objet JSON valide, sans aucun texte avant ou après, sans backticks markdown.
 
@@ -56,7 +62,17 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans aucun texte avant ou après,
   "notes": "string — informations complémentaires, sinon chaîne vide"
 }`
 
-export function buildUserPrompt(chantier: Chantier, captures: CaptureItem[]): string {
+// `consignes` (amelioration 11) : consignes de modification dictees/saisies par
+// Olivier lors d'une regeneration (« ajoute que la toiture est en mauvais etat »,
+// « enleve la partie sur les fenetres », « precise que les travaux durent 3
+// semaines »). Optionnel : absent/vide => prompt identique a aujourd'hui. La
+// generation part TOUJOURS des captures brutes (option A) ; les consignes
+// s'ajoutent en fin de prompt comme une entree de confiance supplementaire.
+export function buildUserPrompt(
+  chantier: Chantier,
+  captures: CaptureItem[],
+  consignes?: string | null,
+): string {
   const lines: string[] = []
 
   lines.push('INFORMATIONS CLIENT :')
@@ -83,6 +99,14 @@ export function buildUserPrompt(chantier: Chantier, captures: CaptureItem[]): st
         : ''
       lines.push(`VOCAL #${item.position} (position ${item.position})${linkedTag} : "${item.transcription}"`)
     }
+  }
+
+  // Consignes de modification (regeneration) : ajoutees seulement si fournies.
+  const consignesNettes = (consignes ?? '').trim()
+  if (consignesNettes) {
+    lines.push('')
+    lines.push('CONSIGNES DE MODIFICATION D\'OLIVIER (a appliquer a la regeneration) :')
+    lines.push(consignesNettes)
   }
 
   lines.push('')
