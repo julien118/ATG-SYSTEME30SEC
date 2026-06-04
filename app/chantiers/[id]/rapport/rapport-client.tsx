@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import ReportView from '@/components/ReportView'
 import Spinner from '@/components/Spinner'
+import AudioRecorder from '@/components/AudioRecorder'
 import { useToast } from '@/components/ToastProvider'
 import { fetchWithTimeout, nettoyerRapportContenu, nomFichierRapport } from '@/lib/utils'
 import type { RapportContenu } from '@/lib/types'
@@ -45,6 +46,12 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
   const [error, setError] = useState('')
   const [preparingDevis, setPreparingDevis] = useState(false)
   const [devisProgressStep, setDevisProgressStep] = useState(0)
+  // Regeneration avec consignes (amelioration 11) : pop-up + consignes saisies ou
+  // dictees + etat de la transcription vocale.
+  const [regenOuvert, setRegenOuvert] = useState(false)
+  const [consignes, setConsignes] = useState('')
+  const [transcribing, setTranscribing] = useState(false)
+  const [erreurVocal, setErreurVocal] = useState('')
   const toast = useToast()
   const generationStarted = useRef(false)
 
@@ -97,7 +104,13 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
     }
   }
 
-  const generate = useCallback(async () => {
+  // `consignesArg` (amelioration 11) : consignes de modification a integrer a la
+  // regeneration (vide => regeneration a l'identique, comportement actuel).
+  // ROBUSTESSE : on NE vide PAS le rapport affiche au lancement. Le rapport courant
+  // reste a l'ecran (avec un overlay de progression) et n'est REMPLACE qu'en cas de
+  // succes. En cas d'echec, on conserve l'ancien rapport et on signale l'erreur :
+  // Olivier ne perd jamais son compte rendu si la regeneration rate.
+  const generate = useCallback(async (consignesArg?: string) => {
     setGenerating(true)
     setError('')
     setProgressStep(0)
@@ -114,13 +127,15 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
       const res = await fetchWithTimeout('/api/generate-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chantierId }),
+        body: JSON.stringify({ chantierId, consignes: consignesArg ?? null }),
       }, 60000)
 
       clearInterval(stepInterval)
 
       if (!res.ok) {
-        setError('La génération a échoué. Réessayez.')
+        const msg = 'La génération a échoué. Réessayez.'
+        setError(msg)
+        toast.show(msg, 'error')
         setGenerating(false)
         return
       }
@@ -138,7 +153,7 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
     }
 
     setGenerating(false)
-  }, [chantierId, router, toast])
+  }, [chantierId, toast])
 
   // Auto-generate on mount if no rapport exists
   useEffect(() => {
@@ -148,9 +163,47 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
     }
   }, [initialRapport, generate])
 
+  // Le bouton « Régénérer » ouvre desormais le pop-up de consignes (au lieu de
+  // regenerer directement a l'identique).
   const handleRegenerate = () => {
-    setRapport(null)
-    generate()
+    setConsignes('')
+    setErreurVocal('')
+    setRegenOuvert(true)
+  }
+
+  // Lance la regeneration avec les consignes saisies/dictees (vide => identique).
+  const lancerRegeneration = () => {
+    const c = consignes.trim()
+    setRegenOuvert(false)
+    void generate(c || undefined)
+  }
+
+  // Dictee des consignes : meme mecanique que l'assistant (AudioRecorder compact
+  // + /api/transcribe). Le texte transcrit est AJOUTE a la zone de texte
+  // (modifiable), jamais lance automatiquement : Olivier relit avant de regenerer.
+  const transcrire = async (blob: Blob) => {
+    if (blob.size < 1000) {
+      setErreurVocal('Enregistrement trop court.')
+      return
+    }
+    setErreurVocal('')
+    setTranscribing(true)
+    try {
+      const formData = new FormData()
+      formData.append('audio', blob, 'consignes.webm')
+      const res = await fetch('/api/transcribe', { method: 'POST', body: formData })
+      const data = await res.json().catch(() => ({}))
+      const texte = (data.text ?? '').trim()
+      if (res.ok && texte) {
+        setConsignes((prev) => (prev.trim() ? `${prev.trim()} ${texte}` : texte))
+      } else {
+        setErreurVocal('Transcription échouée. Réessayez ou tapez vos modifications.')
+      }
+    } catch {
+      setErreurVocal('Transcription échouée. Réessayez ou tapez vos modifications.')
+    } finally {
+      setTranscribing(false)
+    }
   }
 
   const handleUpdate = async (updated: RapportContenu) => {
@@ -178,8 +231,10 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
     window.open(urlPdfRapport(rapport), '_blank', 'noopener,noreferrer')
   }
 
-  // ---- GENERATING VIEW ----
-  if (generating) {
+  // ---- GENERATING VIEW (premiere generation uniquement) ----
+  // Si un rapport existe deja (regeneration), on NE prend PAS le plein ecran : on
+  // garde le rapport affiche et on superpose un overlay de progression (plus bas).
+  if (generating && !rapport) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
         {/* Spinner */}
@@ -234,7 +289,7 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
           </svg>
         </div>
         <p className="text-foreground font-medium mb-2">{error}</p>
-        <button onClick={generate} disabled={generating} className="btn-primary mt-4 flex items-center gap-2">
+        <button onClick={() => generate()} disabled={generating} className="btn-primary mt-4 flex items-center gap-2">
           {generating && <Spinner className="h-4 w-4" />}
           Réessayer
         </button>
@@ -247,6 +302,100 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
 
   return (
     <>
+      {/* Overlay plein écran pendant une RÉGÉNÉRATION (amelioration 11) : le
+          rapport actuel reste monte dessous, on ne le perd jamais ; il n'est
+          remplace qu'au succes. Reutilise la checklist de progression. */}
+      {generating && (
+        <div className="fixed inset-0 z-50 bg-white flex flex-col items-center justify-center px-6 text-center pt-safe pb-safe">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center mb-8 animate-pulse">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+          </div>
+          <p className="text-sm font-semibold text-foreground mb-6">Régénération du compte rendu</p>
+          <div className="w-full max-w-xs space-y-3">
+            {PROGRESS_STEPS.map((step, i) => (
+              <div
+                key={i}
+                className={`flex items-center gap-3 transition-all duration-500 ${
+                  i <= progressStep ? 'opacity-100' : 'opacity-30'
+                }`}
+              >
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  i < progressStep
+                    ? 'bg-primary text-white'
+                    : i === progressStep
+                      ? 'bg-primary/20 text-primary animate-pulse'
+                      : 'bg-gray-200 text-gray-400'
+                }`}>
+                  {i < progressStep ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  ) : (
+                    <span className="text-xs font-bold">{i + 1}</span>
+                  )}
+                </div>
+                <span className="text-sm text-foreground text-left">{step}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Pop-up de régénération avec consignes (voix ou écrit). Style coherent
+          avec les autres pop-up (DeleteChantierModal / fin de visite). */}
+      {regenOuvert && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setRegenOuvert(false)} />
+          <div className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-6 pb-safe animate-slide-up sm:animate-scale-in">
+            <h3 className="text-lg font-bold text-foreground mb-2">Régénérer le rapport</h3>
+            <p className="text-gray-500 text-sm mb-4">
+              Décrivez les modifications à apporter, à la voix ou à l&apos;écrit.
+              Laissez vide pour régénérer à l&apos;identique.
+            </p>
+
+            {erreurVocal && (
+              <p className="text-xs text-red-500 mb-2">{erreurVocal}</p>
+            )}
+
+            <div className="flex items-end gap-2 mb-5">
+              <textarea
+                value={consignes}
+                onChange={(e) => setConsignes(e.target.value)}
+                placeholder={transcribing ? 'Transcription en cours...' : 'Ex : ajoute que la toiture est en mauvais état, enlève la partie sur les fenêtres...'}
+                rows={4}
+                className="input-ionnyx flex-1 text-sm resize-none"
+              />
+              {/* Dictee vocale : meme mecanique que l'assistant (compact + /api/transcribe). */}
+              <AudioRecorder
+                variant="compact"
+                onRecordingComplete={transcrire}
+                onError={setErreurVocal}
+                disabled={transcribing}
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setRegenOuvert(false)}
+                className="btn-tertiary flex-1"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={lancerRegeneration}
+                disabled={transcribing}
+                className="btn-primary flex-1"
+              >
+                Régénérer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Overlay plein écran pendant la préparation du devis (animation ~30s) */}
       {preparingDevis && (
         <div className="fixed inset-0 z-50 bg-white flex flex-col items-center justify-center px-6 text-center pt-safe pb-safe">
