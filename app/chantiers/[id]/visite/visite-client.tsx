@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { compressImage, uploadWithRetry, fetchWithTimeout } from '@/lib/utils'
 import { useToast } from '@/components/ToastProvider'
@@ -230,7 +231,19 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
     <div className="h-full flex flex-col bg-background">
       {/* HEADER FIXE */}
       <header className="flex-shrink-0 bg-white border-b border-border px-5 py-4 pt-safe">
-        <div className="max-w-lg mx-auto flex items-center justify-between">
+        <div className="max-w-lg mx-auto flex items-center gap-3">
+          {/* Fleche retour (point 8) : ramene a l'ecran contact. Grace au point 7,
+              cet ecran ne redirige plus « en_cours » vers la visite => pas de boucle.
+              Meme chevron et memes classes que les autres ecrans (coherence). */}
+          <Link
+            href={`/chantiers/${chantier.id}`}
+            className="p-1 -ml-1 text-gray-400 hover:text-foreground transition-colors"
+            aria-label="Retour"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </Link>
           <div className="flex-1 min-w-0">
             <h1 className="font-semibold text-foreground truncate">{chantier.client_nom}</h1>
             <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
