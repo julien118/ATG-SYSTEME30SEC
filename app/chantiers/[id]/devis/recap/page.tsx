@@ -78,7 +78,7 @@ export default async function RecapDevisPage({
 
   return (
     <div className="min-h-screen-safe bg-background flex flex-col">
-      <header className="sticky top-0 z-30 bg-white border-b border-border px-5 py-4 pt-safe flex items-center gap-3">
+      <header className="sticky top-0 z-30 bg-[#1a1a1a] border-b border-white/10 px-5 py-4 pt-safe flex items-center gap-3">
         {/* Fleche retour (point 13) : ramene aux METRES (Phase B) via ?etape=metres,
             avec le libelle « Saisir les metres » a cote du chevron. */}
         <Link
@@ -92,7 +92,7 @@ export default async function RecapDevisPage({
         </Link>
         <div className="flex-1 min-w-0">
           <LogoLink width={120} height={28} />
-          <p className="text-xs text-gray-400 truncate">
+          <p className="text-xs text-gray-300 truncate">
             Devis - {chantier.client_nom}
           </p>
         </div>

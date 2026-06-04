@@ -7,8 +7,8 @@ import { ATG_USER_ID } from '@/lib/atg'
 export default function NouveauChantierPage() {
   return (
     <div className="min-h-screen-safe bg-background">
-      <header className="sticky top-0 z-30 bg-white border-b border-border px-5 py-4 pt-safe flex items-center gap-3">
-        <Link href="/chantiers" className="p-1 -ml-1 text-gray-400 hover:text-foreground transition-colors">
+      <header className="sticky top-0 z-30 bg-[#1a1a1a] border-b border-white/10 px-5 py-4 pt-safe flex items-center gap-3">
+        <Link href="/chantiers" className="p-1 -ml-1 text-gray-300 hover:text-white transition-colors">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>

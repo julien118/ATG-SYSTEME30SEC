@@ -42,15 +42,15 @@ export default async function RapportPage({ params }: { params: { id: string } }
 
   return (
     <div className="min-h-screen-safe bg-background flex flex-col">
-      <header className="flex-shrink-0 sticky top-0 z-30 bg-white border-b border-border px-5 py-4 pt-safe flex items-center gap-3">
-        <Link href="/chantiers" className="p-1 -ml-1 text-gray-400 hover:text-foreground transition-colors">
+      <header className="flex-shrink-0 sticky top-0 z-30 bg-[#1a1a1a] border-b border-white/10 px-5 py-4 pt-safe flex items-center gap-3">
+        <Link href="/chantiers" className="p-1 -ml-1 text-gray-300 hover:text-white transition-colors">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </Link>
         <div className="flex-1 min-w-0">
           <LogoLink width={120} height={28} />
-          <p className="text-xs text-gray-400 truncate">{chantier.client_nom}</p>
+          <p className="text-xs text-gray-300 truncate">{chantier.client_nom}</p>
         </div>
       </header>
 

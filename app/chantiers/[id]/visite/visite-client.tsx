@@ -230,14 +230,14 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
   return (
     <div className="h-full flex flex-col bg-background">
       {/* HEADER FIXE */}
-      <header className="flex-shrink-0 bg-white border-b border-border px-5 py-4 pt-safe">
+      <header className="flex-shrink-0 bg-[#1a1a1a] border-b border-white/10 px-5 py-4 pt-safe">
         <div className="max-w-lg mx-auto flex items-center gap-3">
           {/* Fleche retour (point 8) : ramene a l'ecran contact. Grace au point 7,
               cet ecran ne redirige plus « en_cours » vers la visite => pas de boucle.
               Meme chevron et memes classes que les autres ecrans (coherence). */}
           <Link
             href={`/chantiers/${chantier.id}`}
-            className="p-1 -ml-1 text-gray-400 hover:text-foreground transition-colors"
+            className="p-1 -ml-1 text-gray-300 hover:text-white transition-colors"
             aria-label="Retour"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -245,8 +245,8 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
             </svg>
           </Link>
           <div className="flex-1 min-w-0">
-            <h1 className="font-semibold text-foreground truncate">{chantier.client_nom}</h1>
-            <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
+            <h1 className="font-semibold text-white truncate">{chantier.client_nom}</h1>
+            <div className="flex items-center gap-3 text-xs text-gray-300 mt-0.5">
               <span>{photoCount} photo{photoCount !== 1 ? 's' : ''}</span>
               <span>{vocalCount} {vocalCount > 1 ? 'vocaux' : 'vocal'}</span>
             </div>
@@ -254,7 +254,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
           <button
             onClick={() => setShowEndModal(true)}
             disabled={captures.length === 0 || uploading}
-            className="btn-secondary text-sm px-4 py-2 disabled:opacity-40"
+            className="inline-flex items-center justify-center rounded-xl text-sm px-4 py-2 border border-white/30 text-white hover:bg-white/10 transition-colors disabled:opacity-40"
           >
             Terminer
           </button>
