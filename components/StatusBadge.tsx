@@ -1,9 +1,8 @@
-import type { ChantierStatut } from '@/lib/types'
+import type { StatutAffiche } from '@/lib/statut-affaire'
 
-// Trois statuts affiches : Planifié (bleu), En cours (ambre), Généré (vert).
-// `termine` (visite finie mais devis pas encore arrive a l'etape Costructor) est
-// rendu a l'identique de `en_cours` : pour Olivier, c'est toujours "En cours".
-const CONFIG: Record<ChantierStatut, { label: string; icon: string; className: string }> = {
+// Cinq statuts AFFICHES, derives via lib/statut-affaire (source de verite unique).
+// Le Record est EXHAUSTIF : TypeScript impose les 5 cles, un oubli ne compile pas.
+const CONFIG: Record<StatutAffiche, { label: string; icon: string; className: string }> = {
   planifie: {
     label: 'Planifié',
     icon: '📅',
@@ -14,19 +13,24 @@ const CONFIG: Record<ChantierStatut, { label: string; icon: string; className: s
     icon: '🔨',
     className: 'bg-amber-50 text-amber-700',
   },
-  termine: {
-    label: 'En cours',
-    icon: '🔨',
-    className: 'bg-amber-50 text-amber-700',
-  },
   rapport_genere: {
-    label: 'Généré',
-    icon: '✅',
+    label: 'Rapport généré',
+    icon: '📄',
     className: 'bg-emerald-50 text-emerald-700',
+  },
+  devis_en_cours: {
+    label: 'Devis en cours',
+    icon: '📝',
+    className: 'bg-violet-50 text-violet-700',
+  },
+  devis_envoye: {
+    label: 'Devis envoyé',
+    icon: '📤',
+    className: 'bg-teal-50 text-teal-700',
   },
 }
 
-export default function StatusBadge({ statut }: { statut: ChantierStatut }) {
+export default function StatusBadge({ statut }: { statut: StatutAffiche }) {
   const { label, icon, className } = CONFIG[statut]
 
   return (

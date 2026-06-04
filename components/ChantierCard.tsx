@@ -3,13 +3,14 @@
 import { useRef, useCallback } from 'react'
 import Link from 'next/link'
 import type { Chantier } from '@/lib/types'
+import { sectionDe, type StatutAffiche } from '@/lib/statut-affaire'
 import StatusBadge from './StatusBadge'
 
 interface ChantierCardProps {
   chantier: Chantier
-  // Etape C : un devis existe pour ce chantier -> la carte mene a l'ecran du devis
-  // (continuer), pas au compte rendu.
-  aDevis?: boolean
+  // Statut affiche derive (source de verite unique) : pilote A LA FOIS le badge ET
+  // le routing (les statuts de la section Devis menent a l'ecran du devis).
+  statutAffiche: StatutAffiche
   onLongPress: (chantier: Chantier) => void
 }
 
@@ -19,10 +20,10 @@ function formatDate(dateStr: string | null) {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function getChantierHref(chantier: Chantier, aDevis: boolean) {
-  // Etape C : si un devis existe (en cours ou deja envoye), la carte mene
-  // directement a l'ecran du devis pour le CONTINUER (sans jamais regenerer).
-  if (aDevis) return `/chantiers/${chantier.id}/devis`
+function getChantierHref(chantier: Chantier, statutAffiche: StatutAffiche) {
+  // Section Devis (Devis en cours / Devis envoye) : la carte mene directement a
+  // l'ecran du devis pour le CONTINUER (sans jamais regenerer).
+  if (sectionDe(statutAffiche) === 'devis') return `/chantiers/${chantier.id}/devis`
   // Généré ou Terminé : on ouvre le compte rendu (pas le formulaire d'edition).
   if (chantier.statut === 'rapport_genere' || chantier.statut === 'termine') {
     return `/chantiers/${chantier.id}/rapport`
@@ -33,7 +34,7 @@ function getChantierHref(chantier: Chantier, aDevis: boolean) {
   return `/chantiers/${chantier.id}`
 }
 
-export default function ChantierCard({ chantier, aDevis, onLongPress }: ChantierCardProps) {
+export default function ChantierCard({ chantier, statutAffiche, onLongPress }: ChantierCardProps) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pressedRef = useRef(false)
 
@@ -62,7 +63,7 @@ export default function ChantierCard({ chantier, aDevis, onLongPress }: Chantier
 
   return (
     <Link
-      href={getChantierHref(chantier, !!aDevis)}
+      href={getChantierHref(chantier, statutAffiche)}
       onClick={handleClick}
       onMouseDown={startPress}
       onMouseUp={endPress}
@@ -76,7 +77,7 @@ export default function ChantierCard({ chantier, aDevis, onLongPress }: Chantier
         <h3 className="font-semibold text-foreground text-base truncate pr-3">
           {chantier.client_nom}
         </h3>
-        <StatusBadge statut={chantier.statut} />
+        <StatusBadge statut={statutAffiche} />
       </div>
 
       {chantier.client_adresse && (

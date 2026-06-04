@@ -4,15 +4,17 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { Chantier, Profile } from '@/lib/types'
+import { sectionDe, type StatutAffiche } from '@/lib/statut-affaire'
 import ChantierCard from '@/components/ChantierCard'
 import DeleteChantierModal from '@/components/DeleteChantierModal'
 import { useToast } from '@/components/ToastProvider'
 
-type Tab = 'tous' | 'en_cours' | 'rapports'
+// Les 3 sections d'accueil : Tous, Visite technique, Devis.
+type Tab = 'tous' | 'visite_technique' | 'devis'
 
-// Chaque chantier porte un drapeau `aDevis` (un devis existe-t-il ?), calcule
-// cote serveur, pour le routing "Continuer mon devis" (etape C).
-type ChantierListe = Chantier & { aDevis: boolean }
+// Chaque chantier porte son statut affiche derive (cote serveur, source de verite
+// unique) : pilote le badge ET la repartition dans les sections.
+type ChantierListe = Chantier & { statutAffiche: StatutAffiche }
 
 interface ChantiersListProps {
   chantiers: ChantierListe[]
@@ -28,10 +30,10 @@ export default function ChantiersList({ chantiers }: ChantiersListProps) {
   const router = useRouter()
   const toast = useToast()
 
-  // Filter by tab
+  // Filter by tab : repartition via sectionDe (source de verite unique).
   const tabFiltered = chantiers.filter((c) => {
-    if (tab === 'en_cours') return ['planifie', 'en_cours', 'termine'].includes(c.statut)
-    if (tab === 'rapports') return c.statut === 'rapport_genere'
+    if (tab === 'visite_technique') return sectionDe(c.statutAffiche) === 'visite_technique'
+    if (tab === 'devis') return sectionDe(c.statutAffiche) === 'devis'
     return true
   })
 
@@ -58,15 +60,15 @@ export default function ChantiersList({ chantiers }: ChantiersListProps) {
     }
   }
 
-  const countEnCours = chantiers.filter((c) => ['planifie', 'en_cours', 'termine'].includes(c.statut)).length
-  const countRapports = chantiers.filter((c) => c.statut === 'rapport_genere').length
+  const countVisite = chantiers.filter((c) => sectionDe(c.statutAffiche) === 'visite_technique').length
+  const countDevis = chantiers.filter((c) => sectionDe(c.statutAffiche) === 'devis').length
 
-  // Onglets coherents avec les 3 statuts affiches : "En cours" regroupe le
-  // pipeline actif (Planifié + En cours + termine), "Générés" = rapport_genere.
+  // Les 3 sections : Visite technique (Planifié / En cours / Rapport généré),
+  // Devis (Devis en cours / Devis envoyé), et Tous.
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: 'tous', label: 'Tous', count: chantiers.length },
-    { key: 'en_cours', label: 'En cours', count: countEnCours },
-    { key: 'rapports', label: 'Générés', count: countRapports },
+    { key: 'visite_technique', label: 'Visite technique', count: countVisite },
+    { key: 'devis', label: 'Devis', count: countDevis },
   ]
 
   return (
@@ -127,7 +129,7 @@ export default function ChantiersList({ chantiers }: ChantiersListProps) {
             <ChantierCard
               key={chantier.id}
               chantier={chantier}
-              aDevis={chantier.aDevis}
+              statutAffiche={chantier.statutAffiche}
               onLongPress={setDeleteTarget}
             />
           ))}

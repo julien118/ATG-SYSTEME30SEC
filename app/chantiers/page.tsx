@@ -3,7 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import LogoLink from '@/components/LogoLink'
 import ChantiersList from './chantiers-list'
 import { ATG_USER_ID, ATG_PROFIL } from '@/lib/atg'
-import type { Profile, Chantier } from '@/lib/types'
+import { deriverStatutAffiche } from '@/lib/statut-affaire'
+import type { Profile, Chantier, DevisStatut } from '@/lib/types'
 
 // Mode démo ATG : pas d'auth, on lit le profile et les chantiers
 // avec un user_id en dur (ATG_USER_ID).
@@ -20,25 +21,37 @@ export default async function ChantiersPage() {
   // celui défini en dur dans lib/atg.ts pour ne pas bloquer la démo.
   const safeProfile: Profile = profile ? (profile as Profile) : ATG_PROFIL
 
-  // Chargement des chantiers via le client anon (inchange, fonctionne deja).
-  const { data: rows } = await supabase
+  // Etat complet par chantier (statut du chantier + existence du compte rendu +
+  // statut du devis) en UNE seule requete admin avec embedding (pas de N+1). Admin
+  // car l'anon ne lit ni la table devis ni l'embed rapports (RLS). Lecture seule.
+  const admin = createAdminClient()
+  const { data: rows } = await admin
     .from('chantiers')
-    .select('*')
+    .select('*, devis(statut, cree_le), rapports(id)')
     .eq('user_id', ATG_USER_ID)
     .order('created_at', { ascending: false })
 
-  // Existence d'un devis par chantier (etape C) : le client anon NE LIT PAS la
-  // table devis, on utilise donc l'admin UNIQUEMENT pour ce SELECT en lecture
-  // (un seul GET de tous les chantier_id ayant un devis). Sert au routing
-  // "Continuer mon devis". Aucune ecriture.
-  const admin = createAdminClient()
-  const { data: devisRows } = await admin.from('devis').select('chantier_id')
-  const chantiersAvecDevis = new Set((devisRows ?? []).map((d) => d.chantier_id as string))
-
-  const chantiers = (rows ?? []).map((r: Chantier) => ({
-    ...r,
-    aDevis: chantiersAvecDevis.has(r.id),
-  }))
+  // Statut affiche (parmi 5) derive par chantier via la source de verite unique
+  // (lib/statut-affaire). On retient le devis le plus recent si plusieurs.
+  // `devis` est une relation to-many (tableau, 0..n) ; `rapports` est une relation
+  // to-ONE (contrainte UNIQUE sur chantier_id) donc remontee en OBJET (ou null) par
+  // PostgREST, pas en tableau.
+  const chantiers = (rows ?? []).map(
+    (r: Chantier & {
+      devis?: { statut: DevisStatut; cree_le: string }[]
+      rapports?: { id: string } | null
+    }) => {
+      const devisRecent = [...(r.devis ?? [])].sort((a, b) =>
+        (b.cree_le ?? '').localeCompare(a.cree_le ?? ''),
+      )[0]
+      const statutAffiche = deriverStatutAffiche({
+        chantierStatut: r.statut,
+        aCompteRendu: r.rapports != null,
+        devisStatut: devisRecent?.statut ?? null,
+      })
+      return { ...r, statutAffiche }
+    },
+  )
 
   return (
     <div className="min-h-screen-safe bg-background">
