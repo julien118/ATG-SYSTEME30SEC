@@ -132,8 +132,9 @@ export default async function RecapDevisPage({
 
         {/* Tableau style Costructor */}
         <div className="mx-4 rounded-xl border border-border bg-white overflow-hidden">
-          {/* Header colonnes */}
-          <div className="grid grid-cols-[1fr_60px_70px_90px_100px] sm:grid-cols-[1fr_80px_80px_110px_120px] gap-2 bg-primary text-white text-[10px] sm:text-xs font-semibold uppercase tracking-wider px-3 py-2.5">
+          {/* Header colonnes : masque sur mobile (n'a de sens qu'en mode
+              colonnes), affiche a partir de sm: comme avant. */}
+          <div className="hidden sm:grid sm:grid-cols-[1fr_80px_80px_110px_120px] gap-2 bg-primary text-white text-xs font-semibold uppercase tracking-wider px-3 py-2.5">
             <div>Désignation</div>
             <div className="text-right">Qté.</div>
             <div className="text-center">Unité</div>
@@ -168,8 +169,25 @@ export default async function RecapDevisPage({
                         key={`${a.costructor_article_id}-${aIdx}`}
                         className="border-t border-border"
                       >
-                        {/* Ligne tableau : libellé + qté + unité + prix + total */}
-                        <div className="grid grid-cols-[1fr_60px_70px_90px_100px] sm:grid-cols-[1fr_80px_80px_110px_120px] gap-2 px-3 pt-2.5 pb-1.5 text-xs sm:text-sm items-start">
+                        {/* MOBILE (< sm) : bloc empile. Libelle pleine largeur,
+                            retour a la ligne normal (plus de cassure lettre par
+                            lettre), puis une ligne compacte avec les chiffres. */}
+                        <div className="sm:hidden px-3 pt-2.5 pb-1.5">
+                          <p className="text-sm text-foreground font-medium break-words">
+                            {a.libelle}
+                          </p>
+                          <div className="mt-1 flex items-baseline justify-between gap-2 text-xs tabular-nums">
+                            <span className="text-gray-600">
+                              {a.quantite} {a.unite} · {formatUnit(a.prix_vente)}
+                            </span>
+                            <span className="font-medium text-foreground">
+                              {formatEUR(total)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* DESKTOP (>= sm) : grille en colonnes, INCHANGEE. */}
+                        <div className="hidden sm:grid sm:grid-cols-[1fr_80px_80px_110px_120px] gap-2 px-3 pt-2.5 pb-1.5 text-sm items-start">
                           <div className="text-foreground min-w-0 break-words font-medium">
                             {a.libelle}
                           </div>
