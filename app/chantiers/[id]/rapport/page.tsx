@@ -27,6 +27,15 @@ export default async function RapportPage({ params }: { params: { id: string } }
     .eq('chantier_id', params.id)
     .single()
 
+  // Etape C : un devis existe-t-il deja pour ce chantier ? Si oui, le bouton du CR
+  // devient "Continuer mon devis" (navigation simple, sans regenerer).
+  const { data: devisExistant } = await supabase
+    .from('devis')
+    .select('id')
+    .eq('chantier_id', params.id)
+    .maybeSingle()
+  const aDevis = !!devisExistant
+
   return (
     <div className="min-h-screen-safe bg-background flex flex-col">
       <header className="flex-shrink-0 sticky top-0 z-30 bg-white border-b border-border px-5 py-4 pt-safe flex items-center gap-3">
@@ -46,6 +55,7 @@ export default async function RapportPage({ params }: { params: { id: string } }
         initialRapport={(rapport?.contenu_json as RapportContenu) ?? null}
         heureVisite={heureVisite}
         dateVisiteIso={(chantier as { date_visite: string | null }).date_visite}
+        aDevis={aDevis}
       />
     </div>
   )

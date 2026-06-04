@@ -10,8 +10,12 @@ import { useToast } from '@/components/ToastProvider'
 
 type Tab = 'tous' | 'en_cours' | 'rapports'
 
+// Chaque chantier porte un drapeau `aDevis` (un devis existe-t-il ?), calcule
+// cote serveur, pour le routing "Continuer mon devis" (etape C).
+type ChantierListe = Chantier & { aDevis: boolean }
+
 interface ChantiersListProps {
-  chantiers: Chantier[]
+  chantiers: ChantierListe[]
   profile: Profile
 }
 
@@ -123,6 +127,7 @@ export default function ChantiersList({ chantiers }: ChantiersListProps) {
             <ChantierCard
               key={chantier.id}
               chantier={chantier}
+              aDevis={chantier.aDevis}
               onLongPress={setDeleteTarget}
             />
           ))}

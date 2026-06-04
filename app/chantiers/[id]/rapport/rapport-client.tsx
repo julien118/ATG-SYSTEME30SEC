@@ -14,6 +14,9 @@ interface RapportClientProps {
   initialRapport: RapportContenu | null
   heureVisite?: string | null
   dateVisiteIso?: string | null
+  // Etape C : un devis existe deja pour ce chantier (on propose alors de le
+  // CONTINUER, sans regenerer, au lieu de le PREPARER).
+  aDevis?: boolean
 }
 
 const PROGRESS_STEPS = [
@@ -32,7 +35,7 @@ const DEVIS_PROGRESS_STEPS = [
   'Mise en page du dossier technique...',
 ]
 
-export default function RapportClient({ chantierId, initialRapport, heureVisite, dateVisiteIso }: RapportClientProps) {
+export default function RapportClient({ chantierId, initialRapport, heureVisite, dateVisiteIso, aDevis }: RapportClientProps) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -44,6 +47,13 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
   const [devisProgressStep, setDevisProgressStep] = useState(0)
   const toast = useToast()
   const generationStarted = useRef(false)
+
+  // Etape C : reouverture d'un devis EXISTANT. Navigation simple vers l'ecran du
+  // devis, qui recharge sections_finales tel quel. N'appelle JAMAIS proposer (donc
+  // n'ecrase jamais le travail). C'est le chemin "Continuer mon devis".
+  const handleContinuerDevis = () => {
+    router.push(`/chantiers/${chantierId}/devis`)
+  }
 
   // Génère la proposition de devis depuis le CR puis bascule sur /devis.
   // Affiche une checklist progressive pendant l'appel (~25-35s) pour occuper.
@@ -300,30 +310,47 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
                 Compte rendu généré
               </p>
               <p className="text-xs text-gray-500 mt-0.5">
-                Vos observations peuvent maintenant être converties en brouillon de devis dans Costructor.
+                {aDevis
+                  ? 'Un devis est déjà en préparation pour ce chantier. Vous pouvez le reprendre là où vous l\'avez laissé.'
+                  : 'Vos observations peuvent maintenant être converties en brouillon de devis dans Costructor.'}
               </p>
             </div>
           </div>
-          <button
-            onClick={handlePrepareDevis}
-            disabled={preparingDevis}
-            className="btn-primary w-full text-sm py-3 flex items-center justify-center gap-2"
-          >
-            {preparingDevis ? (
-              <>
-                <Spinner className="h-4 w-4" />
-                Préparation du devis...
-              </>
-            ) : (
-              <>
-                Préparer mon devis
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                  <polyline points="12 5 19 12 12 19" />
-                </svg>
-              </>
-            )}
-          </button>
+          {aDevis ? (
+            // Devis existant : on le CONTINUE (navigation, aucun appel proposer).
+            <button
+              onClick={handleContinuerDevis}
+              className="btn-primary w-full text-sm py-3 flex items-center justify-center gap-2"
+            >
+              Continuer mon devis
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
+            </button>
+          ) : (
+            // Aucun devis : premiere preparation (appelle proposer).
+            <button
+              onClick={handlePrepareDevis}
+              disabled={preparingDevis}
+              className="btn-primary w-full text-sm py-3 flex items-center justify-center gap-2"
+            >
+              {preparingDevis ? (
+                <>
+                  <Spinner className="h-4 w-4" />
+                  Préparation du devis...
+                </>
+              ) : (
+                <>
+                  Préparer mon devis
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                    <polyline points="12 5 19 12 12 19" />
+                  </svg>
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         <ReportView contenu={rapport} onUpdate={handleUpdate} heureVisite={heureVisite} />

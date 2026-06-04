@@ -7,6 +7,9 @@ import StatusBadge from './StatusBadge'
 
 interface ChantierCardProps {
   chantier: Chantier
+  // Etape C : un devis existe pour ce chantier -> la carte mene a l'ecran du devis
+  // (continuer), pas au compte rendu.
+  aDevis?: boolean
   onLongPress: (chantier: Chantier) => void
 }
 
@@ -16,7 +19,10 @@ function formatDate(dateStr: string | null) {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function getChantierHref(chantier: Chantier) {
+function getChantierHref(chantier: Chantier, aDevis: boolean) {
+  // Etape C : si un devis existe (en cours ou deja envoye), la carte mene
+  // directement a l'ecran du devis pour le CONTINUER (sans jamais regenerer).
+  if (aDevis) return `/chantiers/${chantier.id}/devis`
   // Généré ou Terminé : on ouvre le compte rendu (pas le formulaire d'edition).
   if (chantier.statut === 'rapport_genere' || chantier.statut === 'termine') {
     return `/chantiers/${chantier.id}/rapport`
@@ -27,7 +33,7 @@ function getChantierHref(chantier: Chantier) {
   return `/chantiers/${chantier.id}`
 }
 
-export default function ChantierCard({ chantier, onLongPress }: ChantierCardProps) {
+export default function ChantierCard({ chantier, aDevis, onLongPress }: ChantierCardProps) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pressedRef = useRef(false)
 
@@ -56,7 +62,7 @@ export default function ChantierCard({ chantier, onLongPress }: ChantierCardProp
 
   return (
     <Link
-      href={getChantierHref(chantier)}
+      href={getChantierHref(chantier, !!aDevis)}
       onClick={handleClick}
       onMouseDown={startPress}
       onMouseUp={endPress}

@@ -19,11 +19,18 @@ export default async function ChantiersPage() {
   // celui défini en dur dans lib/atg.ts pour ne pas bloquer la démo.
   const safeProfile: Profile = profile ? (profile as Profile) : ATG_PROFIL
 
-  const { data: chantiers } = await supabase
+  // On embarque l'existence d'un devis par chantier (etape C) en UNE requete
+  // (embedding PostgREST, pas de N+1) : sert au routing "Continuer mon devis".
+  const { data: rows } = await supabase
     .from('chantiers')
-    .select('*')
+    .select('*, devis(id)')
     .eq('user_id', ATG_USER_ID)
     .order('created_at', { ascending: false })
+
+  const chantiers = (rows ?? []).map((r: Chantier & { devis?: { id: string }[] }) => ({
+    ...r,
+    aDevis: Array.isArray(r.devis) && r.devis.length > 0,
+  }))
 
   return (
     <div className="min-h-screen-safe bg-background">
@@ -41,7 +48,7 @@ export default async function ChantiersPage() {
           Du chantier au devis, sans rien retaper.
         </p>
         <ChantiersList
-          chantiers={(chantiers as Chantier[]) ?? []}
+          chantiers={chantiers}
           profile={safeProfile}
         />
       </main>
