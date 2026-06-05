@@ -80,6 +80,13 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
     { sIdx: number; aIdx: number; libelle: string } | null
   >(null)
   const [suppression, setSuppression] = useState(false)
+  // Suppression d'une SECTION entiere (commit 3) : cible en attente de confirmation
+  // ({sIdx, nom}) ; non null => pop-up affiche. Verrou distinct de la suppression
+  // d'article et du drapeau de section nouvelle.
+  const [suppressionSectionCible, setSuppressionSectionCible] = useState<
+    { sIdx: number; nom: string } | null
+  >(null)
+  const [suppressionSection, setSuppressionSection] = useState(false)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -701,6 +708,61 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
     }
   }
 
+  // ---------- Phase A : suppression d'une section entiere (commit 3) ----------
+
+  // Supprime la section cible (et donc TOUS ses articles) apres confirmation :
+  // retire la section, persiste via la route metres-vocaux (mode save) et rollback
+  // si l'enregistrement echoue (meme patron que la suppression d'article). Supprimer
+  // la derniere section est autorise (la garde total-0 empeche d'envoyer un devis
+  // vide, et « + Ajouter une section » reste visible).
+  async function confirmerSuppressionSection() {
+    if (!suppressionSectionCible || suppressionSection) return
+    const { sIdx } = suppressionSectionCible
+    // Sauvegarde explicite : on annule un auto-save en attente.
+    annulerAutoSave()
+    aModifieRef.current = true
+    setSuppressionSection(true)
+    const precedentes = sections
+    const sectionsMaj = sections.filter((_, i) => i !== sIdx)
+
+    setSections(sectionsMaj)
+    setSuppressionSectionCible(null)
+    // Les index des sections SUIVANTES sont decales : on ferme toute edition/recherche
+    // d'article et l'edition de titre ouvertes pour ne viser aucune cle perimee.
+    setEditingKey(null)
+    setRechercheKey(null)
+    annulerEditionSection()
+    // Recale le drapeau « section nouvelle non confirmee » selon la suppression :
+    // supprimee -> oubli ; section avant elle supprimee -> son index recule de 1.
+    setSectionNouvelleIdx((prev) => {
+      if (prev == null) return null
+      if (prev === sIdx) return null
+      if (sIdx < prev) return prev - 1
+      return prev
+    })
+
+    try {
+      const fd = new FormData()
+      fd.append('devisId', devisId)
+      fd.append('sections', JSON.stringify(sectionsMaj))
+      const res = await fetch('/api/devis/metres-vocaux', {
+        method: 'POST',
+        body: fd,
+      })
+      if (!res.ok) {
+        const t = await res.text()
+        throw new Error(t || `Erreur ${res.status}`)
+      }
+      toast.show('Section supprimée', 'success')
+    } catch (e) {
+      // Rollback : on restaure l'etat d'avant si la persistance a echoue.
+      setSections(precedentes)
+      toast.show((e as Error).message ?? 'Échec de la suppression', 'error')
+    } finally {
+      setSuppressionSection(false)
+    }
+  }
+
   if (phase === 'technique') {
     const totalArticles = sections.reduce((acc, s) => acc + s.articles.length, 0)
     return (
@@ -758,17 +820,30 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                   <h2 className="text-sm font-bold uppercase tracking-wide text-primary">
                     {s.nom}
                   </h2>
-                  <button
-                    type="button"
-                    onClick={() => ouvrirEditionSection(sIdx, s.nom)}
-                    className="shrink-0 text-[11px] text-primary hover:underline inline-flex items-center gap-1"
-                  >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                    </svg>
-                    Renommer la section
-                  </button>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => ouvrirEditionSection(sIdx, s.nom)}
+                      className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                      </svg>
+                      Renommer la section
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSuppressionSectionCible({ sIdx, nom: s.nom })}
+                      className="text-[11px] text-red-600 hover:underline inline-flex items-center gap-1"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                      Supprimer la section
+                    </button>
+                  </div>
                 </div>
               )}
               <ul className="space-y-5">
@@ -955,6 +1030,44 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                   className="flex-1 inline-flex items-center justify-center rounded-xl px-6 py-3 bg-red-600 text-white font-semibold transition-all active:scale-97 disabled:opacity-50"
                 >
                   {suppression ? 'Suppression...' : 'Supprimer'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Pop-up de confirmation de suppression d'une SECTION entiere (commit 3,
+            meme style que la suppression d'article). */}
+        {suppressionSectionCible && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+            <div
+              className="absolute inset-0 bg-black/40"
+              onClick={() => { if (!suppressionSection) setSuppressionSectionCible(null) }}
+            />
+            <div className="relative w-full sm:max-w-sm bg-white rounded-t-2xl sm:rounded-2xl p-6 pb-safe animate-slide-up sm:animate-scale-in">
+              <h3 className="text-lg font-bold text-foreground mb-2">
+                Supprimer cette section ?
+              </h3>
+              <p className="text-gray-500 text-sm mb-6">
+                La section <span className="font-medium text-foreground">&quot;{suppressionSectionCible.nom}&quot;</span> et
+                tous ses articles seront retirés du devis.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSuppressionSectionCible(null)}
+                  disabled={suppressionSection}
+                  className="btn-tertiary flex-1"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmerSuppressionSection}
+                  disabled={suppressionSection}
+                  className="flex-1 inline-flex items-center justify-center rounded-xl px-6 py-3 bg-red-600 text-white font-semibold transition-all active:scale-97 disabled:opacity-50"
+                >
+                  {suppressionSection ? 'Suppression...' : 'Supprimer'}
                 </button>
               </div>
             </div>
