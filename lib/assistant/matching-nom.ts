@@ -33,14 +33,45 @@ export function jetonsSignificatifs(nom: string): string[] {
     .filter((t) => t.length >= 2 && !MOTS_VIDES_NOM.has(t))
 }
 
+// Noms d'attribut client typiquement precedes d'un possessif dans une question
+// de suivi (« son adresse », « ses devis »...). Sert UNIQUEMENT a rattraper la
+// faute « sont » pour « son » sans capturer le verbe etre : on n'accepte « sont »
+// comme possessif que s'il precede DIRECTEMENT l'un de ces noms nus. Le verbe
+// « sont » est toujours suivi d'un article/preposition/participe (« sont les
+// devis », « sont en cours », « sont mes clients ») — jamais d'un nom nu — donc
+// « quels sont mes devis ? » ou « ou sont les devis ? » ne matchent pas.
+const NOMS_ATTRIBUT_CLIENT = [
+  'adresse', 'adresses',
+  'devis',
+  'telephone', 'telephones', 'tel', 'numero', 'numeros', 'portable',
+  'mail', 'mails', 'email', 'emails', 'courriel', 'courriels',
+  'contact', 'contacts', 'coordonnees',
+  'compte', 'comptes', 'rapport', 'rapports', 'bilan', 'bilans', 'cr',
+  'chantier', 'chantiers', 'dossier', 'dossiers',
+  'facture', 'factures', 'projet', 'projets',
+  'ville', 'nom', 'prenom', 'societe', 'entreprise', 'visite', 'visites',
+]
+
+// Faute courante « sont » au lieu de « son » EN POSITION DE DETERMINANT : « sont »
+// suivi directement d'un nom d'attribut client. Liste blanche = pas de risque de
+// confondre avec le verbe etre (qui aurait un mot intercale).
+const REGEX_SONT_POSSESSIF = new RegExp(
+  `\\bsont\\s+(?:${NOMS_ATTRIBUT_CLIENT.join('|')})\\b`,
+)
+
 // Detecte une question de SUIVI faisant reference au CLIENT precedent sans le
 // nommer (possessif ou pronom de 3e personne : « son adresse », « ses devis »,
 // « tout sur lui »...). Sert a reprendre le client du contexte de conversation.
 // On EXCLUT volontairement « mon / ma / mes » (1re personne = Olivier lui-meme,
 // donc questions GENERALES « mon prix moyen », « mes clients » : pas de reprise).
+// On tolere en plus la faute « sont » pour « son » mais SEULEMENT en position de
+// determinant (cf REGEX_SONT_POSSESSIF), jamais le verbe « sont ».
 export function faitReferenceClientPrecedent(question: string): boolean {
   const q = normaliser(question)
-  return /\b(son|sa|ses|leur|leurs|lui|sien|sienne|siens|siennes)\b/.test(q)
+  if (/\b(son|sa|ses|leur|leurs|lui|sien|sienne|siens|siennes)\b/.test(q)) {
+    return true
+  }
+  return REGEX_SONT_POSSESSIF.test(q)
 }
 
 // =============================================================
