@@ -64,6 +64,11 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
   const [editSectionIdx, setEditSectionIdx] = useState<number | null>(null)
   const [editSectionDraft, setEditSectionDraft] = useState<string>('')
   const [savingSection, setSavingSection] = useState(false)
+  // Section JUSTE CREEE et PAS ENCORE CONFIRMEE (titre jamais enregistre, aucun
+  // article ajoute) : « Annuler » son renommage la RETIRE (on renonce a l'ajout).
+  // Remis a null des qu'elle est confirmee (premier enregistrement de titre OU
+  // ajout d'un article). Toujours la derniere section ajoutee (append en bout).
+  const [sectionNouvelleIdx, setSectionNouvelleIdx] = useState<number | null>(null)
   // Remplacement d'article (lot 4.3) : bibliotheque chargee en lazy une seule
   // fois, et cle de l'article dont la barre de recherche est ouverte.
   const [articlesBiblio, setArticlesBiblio] = useState<ArticleRemplacable[] | null>(null)
@@ -390,6 +395,9 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
         const t = await res.text()
         throw new Error(t || `Erreur ${res.status}`)
       }
+      // Premier enregistrement du titre = section confirmee : « Annuler » ne la
+      // supprimera plus a l'avenir.
+      if (sIdx === sectionNouvelleIdx) setSectionNouvelleIdx(null)
       annulerEditionSection()
       toast.show('Section renommée', 'success')
     } catch (e) {
@@ -399,6 +407,110 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
     } finally {
       setSavingSection(false)
     }
+  }
+
+  // ---------- Phase A : ajout d'une section (commit 2) ----------
+
+  // Ajoute une nouvelle section VIDE en bas de la liste, la persiste (mode save +
+  // rollback, meme patron que le reste) et l'ouvre IMMEDIATEMENT en renommage pour
+  // qu'Olivier la nomme tout de suite. Il y ajoutera ensuite des articles via le
+  // « + Ajouter un article » existant.
+  async function ajouterSection() {
+    if (savingSection) return
+    // Operation structurelle : on ferme toute edition/recherche d'article ouverte.
+    setEditingKey(null)
+    setRechercheKey(null)
+    // Sauvegarde explicite : on annule un auto-save en attente.
+    annulerAutoSave()
+    // Ajout d'une section = vraie modification.
+    aModifieRef.current = true
+    setSavingSection(true)
+    const precedentes = sections
+    const nouvelIdx = sections.length
+    const sectionsMaj: SectionDevis[] = [...sections, { nom: 'Nouvelle section', articles: [] }]
+
+    setSections(sectionsMaj)
+    // Ouvre la nouvelle section en renommage (le champ titre prend le focus) et la
+    // marque « non confirmee » : « Annuler » la retirera tant qu'elle ne l'est pas.
+    setEditSectionIdx(nouvelIdx)
+    setEditSectionDraft('Nouvelle section')
+    setSectionNouvelleIdx(nouvelIdx)
+
+    try {
+      const fd = new FormData()
+      fd.append('devisId', devisId)
+      fd.append('sections', JSON.stringify(sectionsMaj))
+      const res = await fetch('/api/devis/metres-vocaux', {
+        method: 'POST',
+        body: fd,
+      })
+      if (!res.ok) {
+        const t = await res.text()
+        throw new Error(t || `Erreur ${res.status}`)
+      }
+      toast.show('Section ajoutée', 'success')
+    } catch (e) {
+      // Rollback : on retire la section ajoutee, on referme le renommage et on
+      // oublie le marquage « non confirmee » (la section n'existe plus).
+      setSections(precedentes)
+      annulerEditionSection()
+      setSectionNouvelleIdx(null)
+      toast.show((e as Error).message ?? 'Échec de l\'ajout', 'error')
+    } finally {
+      setSavingSection(false)
+    }
+  }
+
+  // Annulation du renommage d'une section qu'on VIENT DE CREER (non confirmee) :
+  // « Annuler » renonce a l'ajout, donc on RETIRE la section et on persiste la
+  // suppression (mode save + rollback, meme patron que le reste). Aucune trace
+  // residuelle d'une section vide « Nouvelle section ».
+  async function annulerAjoutSection(sIdx: number) {
+    if (savingSection) return
+    annulerAutoSave()
+    aModifieRef.current = true
+    setSavingSection(true)
+    const precedentes = sections
+    const sectionsMaj = sections.filter((_, i) => i !== sIdx)
+
+    setSections(sectionsMaj)
+    annulerEditionSection()
+    setSectionNouvelleIdx(null)
+    // Index modifies : on ferme toute edition/recherche d'article ouverte.
+    setEditingKey(null)
+    setRechercheKey(null)
+
+    try {
+      const fd = new FormData()
+      fd.append('devisId', devisId)
+      fd.append('sections', JSON.stringify(sectionsMaj))
+      const res = await fetch('/api/devis/metres-vocaux', {
+        method: 'POST',
+        body: fd,
+      })
+      if (!res.ok) {
+        const t = await res.text()
+        throw new Error(t || `Erreur ${res.status}`)
+      }
+    } catch (e) {
+      // Rollback : la section revient (renommage referme) si la persistance echoue.
+      setSections(precedentes)
+      toast.show((e as Error).message ?? 'Échec de l\'annulation', 'error')
+    } finally {
+      setSavingSection(false)
+    }
+  }
+
+  // « Annuler » du renommage : si la section editee est la nouvelle non confirmee,
+  // on la retire (annulation de l'ajout) ; sinon on referme simplement le renommage
+  // (section preexistante, ancien titre conserve). Sert au bouton « Annuler ».
+  function annulerRenommageSection() {
+    const idx = editSectionIdx
+    if (idx != null && idx === sectionNouvelleIdx) {
+      void annulerAjoutSection(idx)
+      return
+    }
+    annulerEditionSection()
   }
 
   // ---------- Phase A : remplacement d'article (lot 4.3) ----------
@@ -501,6 +613,9 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
   async function ajouterArticle(sIdx: number, article: ArticleRemplacable) {
     annulerAutoSave()
     aModifieRef.current = true
+    // Ajouter un article a une section la confirme : « Annuler » un futur renommage
+    // ne la supprimera plus.
+    if (sIdx === sectionNouvelleIdx) setSectionNouvelleIdx(null)
     const precedentes = sections
     const nouvel: ArticleDevis = {
       costructor_article_id: article.costructor_article_id,
@@ -621,7 +736,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                   <div className="flex justify-end gap-2">
                     <button
                       type="button"
-                      onClick={annulerEditionSection}
+                      onClick={annulerRenommageSection}
                       disabled={savingSection}
                       className="btn-tertiary text-xs px-3 py-1.5"
                     >
@@ -791,6 +906,21 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
               </div>
             </section>
           ))}
+
+          {/* Ajout d'une nouvelle section (commit 2) : HORS du map ci-dessus, donc
+              toujours visible, y compris quand il ne reste aucune section. */}
+          <button
+            type="button"
+            onClick={ajouterSection}
+            disabled={savingSection}
+            className="w-full rounded-2xl border border-dashed border-primary/40 bg-primary/5 py-3 text-sm font-medium text-primary hover:bg-primary/10 transition inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Ajouter une section
+          </button>
         </main>
 
         {/* Pop-up de confirmation de suppression (point 12, style coherent avec
