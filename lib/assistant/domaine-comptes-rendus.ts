@@ -28,6 +28,7 @@ import {
   correspondNomSouple,
   faitReferenceClientPrecedent,
 } from './matching-nom'
+import { blocHistoriquePourAnalyse, type MessageHistorique } from './historique'
 import type { RapportContenu } from '../types'
 
 const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
@@ -85,7 +86,11 @@ export async function listerComptesRendus(): Promise<CompteRendu[]> {
 
 // ---------- 2a) Analyse de la question (Claude -> intent JSON) ----------
 
-function promptAnalyseCr(question: string, aujourdhui: string): string {
+function promptAnalyseCr(
+  question: string,
+  aujourdhui: string,
+  historique?: MessageHistorique[] | null,
+): string {
   return `Tu analyses une question d'Olivier (artisan façades) sur SES comptes rendus de visite de chantier. Tu ne reponds PAS : tu la traduis en filtres structures.
 
 DATE DU JOUR : ${aujourdhui} (pour interpreter "ce mois-ci", "en mai", "le dernier"...).
@@ -94,7 +99,7 @@ QUESTION :
 ---
 ${question}
 ---
-
+${blocHistoriquePourAnalyse(historique)}
 Reponds STRICTEMENT en JSON valide (aucun texte autour, pas de markdown), schema EXACT :
 {
   "intention": "liste | detail_chantier | recherche_theme | comptage | inconnu",
@@ -120,12 +125,13 @@ function extraireJson(texte: string): any {
 export async function analyserQuestionCr(
   question: string,
   aujourdhui: string,
+  historique?: MessageHistorique[] | null,
 ): Promise<IntentCr> {
   const rep = await anthropic.messages.create({
     model: MODELE_CLAUDE,
     max_tokens: 400,
     temperature: 0,
-    messages: [{ role: 'user', content: promptAnalyseCr(question, aujourdhui) }],
+    messages: [{ role: 'user', content: promptAnalyseCr(question, aujourdhui, historique) }],
   })
   const texte = rep.content[0]?.type === 'text' ? rep.content[0].text : ''
   const p = extraireJson(texte)
@@ -275,9 +281,11 @@ export async function repondreQuestionCr(
   aujourdhui: string,
   crPreCharges?: CompteRendu[],
   clientContexte?: string | null,
+  // Memoire de conversation : aide l'analyse a resoudre une reference (compréhension).
+  historique?: MessageHistorique[] | null,
 ): Promise<ReponseCr> {
   const tous = crPreCharges ?? (await listerComptesRendus())
-  const intent = await analyserQuestionCr(question, aujourdhui)
+  const intent = await analyserQuestionCr(question, aujourdhui, historique)
 
   // Suivi de conversation : on reprend le client du contexte si la question fait
   // reference au client precedent sans le nommer (« et son compte rendu ? »).

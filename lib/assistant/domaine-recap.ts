@@ -28,6 +28,7 @@ import type { FicheClient, CandidatClient } from './domaine-clients'
 import { comptesRendusPourClient } from './domaine-comptes-rendus'
 import { devisPourClient } from '../devis-historique'
 import { faitReferenceClientPrecedent } from './matching-nom'
+import type { MessageHistorique } from './historique'
 
 const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 // Bornage par section : on ne deverse jamais tout au modele.
@@ -85,6 +86,8 @@ export async function repondreRecapClient(
   clientContexte?: string | null,
   // Clic sur un candidat (amelioration 4) : nom canonique exact a forcer.
   clientForce?: string | null,
+  // Memoire de conversation : aide l'analyse a resoudre une reference (compréhension).
+  historique?: MessageHistorique[] | null,
 ): Promise<ReponseRecap> {
   // Clic sur un candidat : resolution FORCEE par egalite exacte du nom canonique
   // (un seul resultat garanti par la dedup). On fait le recap directement sur lui,
@@ -97,7 +100,7 @@ export async function repondreRecapClient(
   // 1. Nom du client (on reutilise l'analyse du domaine clients). Suivi de
   // conversation : si la demande de recap ne nomme personne (« et tout sur lui ? »)
   // mais qu'un client a ete evoque juste avant, on le reprend (EN CODE).
-  const intent = await analyserQuestionClients(question)
+  const intent = await analyserQuestionClients(question, historique)
   const nom =
     (intent.client ?? '').trim() ||
     (clientContexte && clientContexte.trim() && faitReferenceClientPrecedent(question)

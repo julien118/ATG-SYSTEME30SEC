@@ -18,6 +18,7 @@
 
 import { anthropic } from './anthropic'
 import { correspondNomSouple, faitReferenceClientPrecedent } from './assistant/matching-nom'
+import { blocHistoriquePourAnalyse, type MessageHistorique } from './assistant/historique'
 
 const BASE_URL =
   process.env.COSTRUCTOR_API_BASE_URL || 'https://api.costructor.co/external/v1'
@@ -141,7 +142,11 @@ export async function listerDevisCompteTest(): Promise<DevisResume[]> {
 
 // ---------- 1) Analyse de la question (Claude -> intent JSON) ----------
 
-function promptAnalyse(question: string, aujourdhui: string): string {
+function promptAnalyse(
+  question: string,
+  aujourdhui: string,
+  historique?: MessageHistorique[] | null,
+): string {
   return `Tu analyses une question posee par un artisan (Olivier, façades : ravalement et ITE) sur l'historique de SES devis. Tu ne reponds PAS a la question : tu la traduis en filtres structures pour une recherche en base.
 
 DATE DU JOUR : ${aujourdhui} (pour interpreter "ce mois-ci", "cette annee", "en mai", "le mois dernier"...).
@@ -150,7 +155,7 @@ QUESTION :
 ---
 ${question}
 ---
-
+${blocHistoriquePourAnalyse(historique)}
 Reponds STRICTEMENT en JSON valide (aucun texte autour, pas de markdown), schema EXACT :
 {
   "intention": "liste_client | agregat | top_montant | comptage | comparaison | liste_generale | inconnu",
@@ -180,11 +185,12 @@ function extraireJson(texte: string): any {
 export async function analyserQuestion(
   question: string,
   aujourdhui: string,
+  historique?: MessageHistorique[] | null,
 ): Promise<IntentRequete> {
   const rep = await anthropic.messages.create({
     model: MODELE_CLAUDE,
     max_tokens: 600,
-    messages: [{ role: 'user', content: promptAnalyse(question, aujourdhui) }],
+    messages: [{ role: 'user', content: promptAnalyse(question, aujourdhui, historique) }],
   })
   const texte = rep.content[0]?.type === 'text' ? rep.content[0].text : ''
   const p = extraireJson(texte)
@@ -411,9 +417,11 @@ export async function repondreQuestion(
   aujourdhui: string,
   devisPreCharges?: DevisResume[],
   clientContexte?: string | null,
+  // Memoire de conversation : aide l'analyse a resoudre une reference (compréhension).
+  historique?: MessageHistorique[] | null,
 ): Promise<ReponseAssistant> {
   const devis = devisPreCharges ?? (await listerDevisCompteTest())
-  const intent = await analyserQuestion(question, aujourdhui)
+  const intent = await analyserQuestion(question, aujourdhui, historique)
 
   // Suivi de conversation : on reprend le client du contexte si la question fait
   // reference au client precedent sans le nommer (« et ses devis ? »). Reprise EN

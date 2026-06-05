@@ -9,13 +9,14 @@
 import { NextResponse } from 'next/server'
 import { repondreAssistant } from '@/lib/assistant/orchestrateur'
 import type { DomaineAssistant } from '@/lib/assistant/aiguilleur'
+import { nettoyerHistorique } from '@/lib/assistant/historique'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
 export async function POST(request: Request) {
   try {
-    const { question, dernierClient, clientForce, domaineForce } = (await request
+    const { question, dernierClient, clientForce, domaineForce, historique } = (await request
       .json()
       .catch(() => ({}))) as {
       question?: string
@@ -26,6 +27,9 @@ export async function POST(request: Request) {
       // domaine d'origine, pour resoudre une seule fiche sans ré-ambiguïté.
       clientForce?: string | null
       domaineForce?: string | null
+      // Memoire de la conversation en cours : les derniers echanges, pour resoudre
+      // une question qui s'appuie sur le passe. Sert UNIQUEMENT a la comprehension.
+      historique?: unknown
     }
     if (!question || typeof question !== 'string' || !question.trim()) {
       return NextResponse.json({ error: 'Question manquante' }, { status: 400 })
@@ -41,6 +45,7 @@ export async function POST(request: Request) {
         dernierClient: typeof dernierClient === 'string' ? dernierClient : null,
         clientForce: typeof clientForce === 'string' ? clientForce : null,
         domaineForce: typeof domaineForce === 'string' ? (domaineForce as DomaineAssistant) : null,
+        historique: nettoyerHistorique(historique),
       },
     )
 

@@ -7,6 +7,7 @@
 // reste propre a chaque domaine.
 
 import { anthropic } from '../anthropic'
+import { blocHistoriquePourAiguillage, type MessageHistorique } from './historique'
 
 const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 
@@ -16,20 +17,27 @@ export type DomaineAssistant = 'devis' | 'comptes_rendus' | 'clients' | 'recap_c
 // domaine non implemente (sinon repli sur "devis").
 const DOMAINES_BRANCHES = new Set<DomaineAssistant>(['devis', 'comptes_rendus', 'clients', 'recap_client'])
 
-function promptAiguilleur(question: string, clientContexte?: string | null): string {
+function promptAiguilleur(
+  question: string,
+  clientContexte?: string | null,
+  historique?: MessageHistorique[] | null,
+): string {
   // Ligne de contexte (question de suivi) : aide a router « et son adresse ? »
   // vers le bon SUJET. L'aiguilleur ne fait que classer, il n'invente JAMAIS de
   // client ; le client du contexte est repris en CODE, pas ici.
   const ctx = (clientContexte ?? '').trim()
     ? `\nCONTEXTE DE CONVERSATION : le dernier client evoque est « ${(clientContexte ?? '').trim()} ». Une question de suivi qui ne nomme PERSONNE (ex : « et son adresse ? », « et ses devis ? », « et le compte rendu ? », « et tout sur lui ? ») porte sur CE client : classe-la selon le SUJET (adresse/telephone/email => clients ; devis/montant => devis ; compte rendu/rapport/observations => comptes_rendus ; tout/dossier complet => recap_client). Ne classe PAS ces suivis en "inconnu".\n`
     : ''
+  // Transcript des derniers echanges (compréhension d'une question qui s'appuie sur
+  // le passe). Vide si pas d'historique => prompt strictement inchange.
+  const histo = blocHistoriquePourAiguillage(historique)
   return `Tu es l'aiguilleur d'un assistant pour Olivier, artisan en ravalement de façade et ITE. Tu ne reponds PAS a la question : tu determines de QUEL type de donnees elle releve.
 
 QUESTION :
 ---
 ${question}
 ---
-${ctx}
+${ctx}${histo}
 
 Reponds STRICTEMENT en JSON valide (aucun texte autour, pas de markdown), schema EXACT :
 { "domaine": "devis | comptes_rendus | clients | recap_client | inconnu" }
@@ -63,13 +71,14 @@ function extraireJson(texte: string): { domaine?: string } {
 export async function aiguiller(
   question: string,
   clientContexte?: string | null,
+  historique?: MessageHistorique[] | null,
 ): Promise<DomaineAssistant> {
   try {
     const rep = await anthropic.messages.create({
       model: MODELE_CLAUDE,
       max_tokens: 50,
       temperature: 0,
-      messages: [{ role: 'user', content: promptAiguilleur(question, clientContexte) }],
+      messages: [{ role: 'user', content: promptAiguilleur(question, clientContexte, historique) }],
     })
     const texte = rep.content[0]?.type === 'text' ? rep.content[0].text : ''
     const domaine = extraireJson(texte).domaine as DomaineAssistant | undefined

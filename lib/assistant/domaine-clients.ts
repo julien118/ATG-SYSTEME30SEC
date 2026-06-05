@@ -35,6 +35,7 @@ import {
   correspondNomSouple,
   faitReferenceClientPrecedent,
 } from './matching-nom'
+import { blocHistoriquePourAnalyse, type MessageHistorique } from './historique'
 import type { CostructorContact } from '../types'
 
 const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
@@ -298,14 +299,14 @@ export function coordonneesCompletes(f: FicheClient) {
 
 // ---------- 1) Analyse de la question (Claude -> intent JSON) ----------
 
-function promptAnalyseClients(question: string): string {
+function promptAnalyseClients(question: string, historique?: MessageHistorique[] | null): string {
   return `Tu analyses une question d'Olivier (artisan façades) sur SES clients/contacts. Tu ne reponds PAS : tu la traduis en filtres structures.
 
 QUESTION :
 ---
 ${question}
 ---
-
+${blocHistoriquePourAnalyse(historique)}
 Reponds STRICTEMENT en JSON valide (aucun texte autour, pas de markdown), schema EXACT :
 {
   "intention": "fiche_client | liste_clients | inconnu",
@@ -328,12 +329,15 @@ function extraireJson(texte: string): any {
   return JSON.parse(m[0])
 }
 
-export async function analyserQuestionClients(question: string): Promise<IntentClients> {
+export async function analyserQuestionClients(
+  question: string,
+  historique?: MessageHistorique[] | null,
+): Promise<IntentClients> {
   const rep = await anthropic.messages.create({
     model: MODELE_CLAUDE,
     max_tokens: 300,
     temperature: 0,
-    messages: [{ role: 'user', content: promptAnalyseClients(question) }],
+    messages: [{ role: 'user', content: promptAnalyseClients(question, historique) }],
   })
   const texte = rep.content[0]?.type === 'text' ? rep.content[0].text : ''
   const p = extraireJson(texte)
@@ -363,6 +367,8 @@ export async function repondreQuestionClients(
   clientContexte?: string | null,
   // Clic sur un candidat (amelioration 4) : nom canonique exact a forcer.
   clientForce?: string | null,
+  // Memoire de conversation : aide l'analyse a resoudre une reference (compréhension).
+  historique?: MessageHistorique[] | null,
 ): Promise<ReponseClients> {
   const contactsCostructor = contactsPreCharges ?? (await listerContacts())
 
@@ -383,7 +389,7 @@ export async function repondreQuestionClients(
     return { reponse, nbContacts: fiche ? 1 : 0, clientResolu: fiche?.nom ?? clientForce.trim() }
   }
 
-  const intent = await analyserQuestionClients(question)
+  const intent = await analyserQuestionClients(question, historique)
 
   // Liste "mes clients" : PRECISE, restreinte aux VRAIS clients Costructor
   // (type 'client'). On n'y ajoute PAS les fiches app : une visite planifiee

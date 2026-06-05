@@ -17,6 +17,7 @@ import { repondreQuestionCr } from './domaine-comptes-rendus'
 import { repondreQuestionClients } from './domaine-clients'
 import { repondreRecapClient } from './domaine-recap'
 import type { CandidatClient } from './domaine-clients'
+import type { MessageHistorique } from './historique'
 
 export interface ReponseOrchestrateur {
   reponse: string
@@ -39,6 +40,9 @@ export interface ContexteConversation {
   // d'origine (pour router directement sans ré-aiguiller). Les deux vont ensemble.
   clientForce?: string | null
   domaineForce?: DomaineAssistant | null
+  // Memoire de la conversation en cours (derniers echanges) : sert UNIQUEMENT a la
+  // comprehension (aiguillage + analyse), jamais a la redaction. Absent => inchange.
+  historique?: MessageHistorique[] | null
 }
 
 const MESSAGE_INCONNU =
@@ -52,6 +56,7 @@ export async function repondreAssistant(
   const clientContexte = contexte?.dernierClient ?? null
   const clientForce = contexte?.clientForce ?? null
   const domaineForce = contexte?.domaineForce ?? null
+  const historique = contexte?.historique ?? null
 
   // Clic sur un candidat (amelioration 4) : on route DIRECTEMENT vers le domaine
   // d'origine (clients ou recap) en forçant le client, sans ré-aiguiller. La
@@ -70,26 +75,29 @@ export async function repondreAssistant(
     return { reponse, domaine: 'clients', nb: nbContacts, clientContexte: clientResolu, candidats }
   }
 
-  // L'aiguilleur recoit le contexte (indice de routage des suivis) ; il ne fait
-  // que classer le sujet, il n'invente jamais de client.
-  const domaine = await aiguiller(question, clientContexte)
+  // L'aiguilleur recoit le contexte (indice de routage des suivis) + l'historique
+  // (compréhension d'une question qui s'appuie sur le passe) ; il ne fait que
+  // classer le sujet, il n'invente jamais de client.
+  const domaine = await aiguiller(question, clientContexte, historique)
 
   if (domaine === 'comptes_rendus') {
     const { reponse, nbComptesRendus, clientResolu } = await repondreQuestionCr(
-      question, aujourdhui, undefined, clientContexte,
+      question, aujourdhui, undefined, clientContexte, historique,
     )
     return { reponse, domaine, nb: nbComptesRendus, clientContexte: clientResolu }
   }
 
   if (domaine === 'clients') {
     const { reponse, nbContacts, clientResolu, candidats } = await repondreQuestionClients(
-      question, undefined, clientContexte,
+      question, undefined, clientContexte, null, historique,
     )
     return { reponse, domaine, nb: nbContacts, clientContexte: clientResolu, candidats }
   }
 
   if (domaine === 'recap_client') {
-    const { reponse, nb, clientResolu, candidats } = await repondreRecapClient(question, clientContexte)
+    const { reponse, nb, clientResolu, candidats } = await repondreRecapClient(
+      question, clientContexte, null, historique,
+    )
     return { reponse, domaine, nb, clientContexte: clientResolu, candidats }
   }
 
@@ -100,7 +108,7 @@ export async function repondreAssistant(
 
   // "devis" (et repli par defaut) : on delegue au moteur existant.
   const { reponse, resultat, clientResolu } = await repondreQuestion(
-    question, aujourdhui, undefined, clientContexte,
+    question, aujourdhui, undefined, clientContexte, historique,
   )
   return { reponse, domaine: 'devis', nb: resultat.nbDevis, clientContexte: clientResolu }
 }
