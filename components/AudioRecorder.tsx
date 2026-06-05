@@ -18,6 +18,10 @@ interface AudioRecorderProps {
   // Notifie l'appelant si le micro est refuse ou indisponible (message discret).
   // Optionnel : la visite ne le passe pas, son comportement reste inchange.
   onError?: (message: string) => void
+  // Remonte l'etat "enregistrement en cours" au parent (true au clic micro, false
+  // a l'arret). Optionnel : permet a l'appelant de bloquer une action pendant la
+  // dictee. Les autres usages qui ne le passent pas restent inchanges.
+  onRecordingChange?: (enregistrement: boolean) => void
 }
 
 export default function AudioRecorder({
@@ -26,6 +30,7 @@ export default function AudioRecorder({
   describeMode,
   variant = 'default',
   onError,
+  onRecordingChange,
 }: AudioRecorderProps) {
   const [recording, setRecording] = useState(false)
   const [duration, setDuration] = useState(0)
@@ -56,13 +61,14 @@ export default function AudioRecorder({
 
       mediaRecorder.start()
       setRecording(true)
+      onRecordingChange?.(true)
       setDuration(0)
       timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000)
     } catch {
       // Permission refusee ou pas de micro : on previent l'appelant si demande.
       onError?.('Micro indisponible. Vérifiez l\'autorisation du navigateur.')
     }
-  }, [onRecordingComplete, onError])
+  }, [onRecordingComplete, onError, onRecordingChange])
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current?.state === 'recording') {
@@ -73,8 +79,9 @@ export default function AudioRecorder({
       timerRef.current = null
     }
     setRecording(false)
+    onRecordingChange?.(false)
     setDuration(0)
-  }, [])
+  }, [onRecordingChange])
 
   // Garde-fou : arret automatique a la duree maximale (l'enregistrement deja
   // capture est traite normalement via onstop -> onRecordingComplete).

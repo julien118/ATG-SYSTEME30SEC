@@ -51,6 +51,9 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
   const [regenOuvert, setRegenOuvert] = useState(false)
   const [consignes, setConsignes] = useState('')
   const [transcribing, setTranscribing] = useState(false)
+  // Etat "micro en cours" remonte par l'AudioRecorder : sert a bloquer le bouton
+  // « Régénérer » des le debut de la dictee (pas seulement pendant la transcription).
+  const [enregistrement, setEnregistrement] = useState(false)
   const [erreurVocal, setErreurVocal] = useState('')
   const toast = useToast()
   const generationStarted = useRef(false)
@@ -168,6 +171,7 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
   const handleRegenerate = () => {
     setConsignes('')
     setErreurVocal('')
+    setEnregistrement(false)
     setRegenOuvert(true)
   }
 
@@ -372,6 +376,7 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
               <AudioRecorder
                 variant="compact"
                 onRecordingComplete={transcrire}
+                onRecordingChange={setEnregistrement}
                 onError={setErreurVocal}
                 disabled={transcribing}
               />
@@ -386,10 +391,10 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
               </button>
               <button
                 onClick={lancerRegeneration}
-                disabled={transcribing}
+                disabled={transcribing || enregistrement}
                 className="btn-primary flex-1"
               >
-                Régénérer
+                {enregistrement ? 'Enregistrement...' : transcribing ? 'Transcription...' : 'Régénérer'}
               </button>
             </div>
           </div>
