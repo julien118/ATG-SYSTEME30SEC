@@ -58,6 +58,12 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState<string>('')
   const [savingDescription, setSavingDescription] = useState(false)
+  // Renommage inline d'une SECTION en Phase A (etat dedie, distinct de l'edition de
+  // description ci-dessus) : index de la section en cours de renommage + brouillon
+  // du titre + verrou de sauvegarde.
+  const [editSectionIdx, setEditSectionIdx] = useState<number | null>(null)
+  const [editSectionDraft, setEditSectionDraft] = useState<string>('')
+  const [savingSection, setSavingSection] = useState(false)
   // Remplacement d'article (lot 4.3) : bibliotheque chargee en lazy une seule
   // fois, et cle de l'article dont la barre de recherche est ouverte.
   const [articlesBiblio, setArticlesBiblio] = useState<ArticleRemplacable[] | null>(null)
@@ -284,6 +290,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
 
   // Helpers édition inline
   function ouvrirEdition(key: string, description: string) {
+    annulerEditionSection()
     setRechercheKey(null)
     setEditingKey(key)
     setEditDraft(description)
@@ -335,6 +342,65 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
     }
   }
 
+  // ---------- Phase A : renommage de section ----------
+
+  // Ouvre le renommage d'une section : on ferme toute edition/recherche d'article
+  // ouverte (operation structurelle : on evite des cles d'index incoherentes) et
+  // on pre-remplit le brouillon avec le nom actuel.
+  function ouvrirEditionSection(sIdx: number, nom: string) {
+    setEditingKey(null)
+    setRechercheKey(null)
+    setEditSectionIdx(sIdx)
+    setEditSectionDraft(nom)
+  }
+
+  function annulerEditionSection() {
+    setEditSectionIdx(null)
+    setEditSectionDraft('')
+  }
+
+  // Enregistre le nouveau titre de la section : met a jour le state local, persiste
+  // via la route metres-vocaux (mode save, sans audio) et rollback si l'enregistrement
+  // echoue (meme patron que sauverDescription / choisirRemplacement). Un titre vide
+  // est refuse en amont (bouton desactive), garde-fou ici par securite.
+  async function sauverTitreSection(sIdx: number) {
+    if (savingSection) return
+    const titre = editSectionDraft.trim()
+    if (!titre) return
+    // Sauvegarde explicite : on annule un auto-save en attente (cet envoi porte
+    // l'etat complet, quantites comprises).
+    annulerAutoSave()
+    // Renommage d'une section = vraie modification.
+    aModifieRef.current = true
+    setSavingSection(true)
+    const precedentes = sections
+    const sectionsMaj = sections.map((s, i) => (i === sIdx ? { ...s, nom: titre } : s))
+
+    setSections(sectionsMaj)
+
+    try {
+      const fd = new FormData()
+      fd.append('devisId', devisId)
+      fd.append('sections', JSON.stringify(sectionsMaj))
+      const res = await fetch('/api/devis/metres-vocaux', {
+        method: 'POST',
+        body: fd,
+      })
+      if (!res.ok) {
+        const t = await res.text()
+        throw new Error(t || `Erreur ${res.status}`)
+      }
+      annulerEditionSection()
+      toast.show('Section renommée', 'success')
+    } catch (e) {
+      // Rollback : on restaure l'etat d'avant si la persistance a echoue.
+      setSections(precedentes)
+      toast.show((e as Error).message ?? 'Échec du renommage', 'error')
+    } finally {
+      setSavingSection(false)
+    }
+  }
+
   // ---------- Phase A : remplacement d'article (lot 4.3) ----------
 
   // Charge la bibliotheque (GET lecture seule) une seule fois, en lazy : on ne
@@ -356,6 +422,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
 
   function ouvrirRecherche(key: string) {
     annulerEdition()
+    annulerEditionSection()
     setRechercheKey(key)
     void chargerBiblio()
   }
@@ -421,6 +488,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
   // ouverte.
   function ouvrirAjout(sIdx: number) {
     annulerEdition()
+    annulerEditionSection()
     setRechercheKey(`add::${sIdx}`)
     void chargerBiblio()
   }
@@ -539,9 +607,55 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
               key={`${s.nom}-${sIdx}`}
               className="mb-5 rounded-2xl border border-border bg-white p-4"
             >
-              <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-primary">
-                {s.nom}
-              </h2>
+              {/* En-tete de section : titre + renommage inline (commit 1). */}
+              {editSectionIdx === sIdx ? (
+                <div className="mb-3 space-y-2">
+                  <input
+                    type="text"
+                    value={editSectionDraft}
+                    onChange={(e) => setEditSectionDraft(e.target.value)}
+                    className="input-ionnyx w-full text-sm font-bold uppercase tracking-wide text-primary"
+                    placeholder="Nom de la section..."
+                    autoFocus
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={annulerEditionSection}
+                      disabled={savingSection}
+                      className="btn-tertiary text-xs px-3 py-1.5"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => sauverTitreSection(sIdx)}
+                      disabled={savingSection || !editSectionDraft.trim()}
+                      className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5"
+                    >
+                      {savingSection && <Spinner className="h-3 w-3" />}
+                      Enregistrer
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-primary">
+                    {s.nom}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => ouvrirEditionSection(sIdx, s.nom)}
+                    className="shrink-0 text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 20h9" />
+                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                    </svg>
+                    Renommer la section
+                  </button>
+                </div>
+              )}
               <ul className="space-y-5">
                 {s.articles.map((a, aIdx) => {
                   const editKey = `${sIdx}::${aIdx}`
