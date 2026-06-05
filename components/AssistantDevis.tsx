@@ -68,6 +68,28 @@ function formaterTexte(texte: string) {
   )
 }
 
+// Construit le transcript de la conversation en cours (memoire conversationnelle,
+// commit 2) envoye a chaque requete EN PLUS de dernierClient. Borne le volume comme
+// le backend (8 derniers messages, reponses bot tronquees) pour ne pas exploser le
+// payload. Sert UNIQUEMENT a la comprehension cote serveur, jamais a la redaction.
+// Vide en debut de conversation => comportement inchange.
+const MAX_HISTORIQUE = 8
+const MAX_BOT_HISTO = 400
+const MAX_USER_HISTO = 300
+function tronquerHisto(s: string, max: number): string {
+  const t = (s ?? '').trim()
+  return t.length > max ? `${t.slice(0, max).trimEnd()}...` : t
+}
+function construireHistorique(msgs: Message[]): { role: 'user' | 'bot'; texte: string }[] {
+  return msgs
+    .slice(-MAX_HISTORIQUE)
+    .filter((m) => m.texte && m.texte.trim())
+    .map((m) => ({
+      role: m.role,
+      texte: tronquerHisto(m.texte, m.role === 'bot' ? MAX_BOT_HISTO : MAX_USER_HISTO),
+    }))
+}
+
 export default function AssistantDevis() {
   const [ouvert, setOuvert] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
@@ -104,14 +126,19 @@ export default function AssistantDevis() {
     texteUtilisateur: string,
   ) {
     if (reflexion) return
+    // Transcript de la conversation ANTERIEURE (avant la question courante) : on le
+    // calcule depuis l'etat actuel des messages, AVANT d'ajouter la bulle utilisateur.
+    const historique = construireHistorique(messages)
     setMessages((m) => [...m, { id: compteur.current++, role: 'user', texte: texteUtilisateur }])
     setReflexion(true)
     try {
       const res = await fetch('/api/assistant-devis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // On transmet le dernier client evoque pour les questions de suivi.
-        body: JSON.stringify({ ...corps, dernierClient }),
+        // On transmet le dernier client evoque (suivis « et son adresse ? ») ET le
+        // fil de la conversation (references au passe « le compte rendu dont on
+        // parlait ? »). L'historique ne sert qu'a la comprehension cote serveur.
+        body: JSON.stringify({ ...corps, dernierClient, historique }),
       })
       const data = await res.json().catch(() => ({}))
       const reponse =
