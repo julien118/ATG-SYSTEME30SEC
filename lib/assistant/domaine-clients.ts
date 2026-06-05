@@ -228,6 +228,22 @@ export async function trouverFichesClient(
   return { fiches: souple, approchant: souple.length > 0 }
 }
 
+// Resolution FORCEE d'une fiche par EGALITE EXACTE du nom normalise (amelioration
+// 4 : clic sur un candidat). Le nom canonique d'un candidat est UNIQUE parmi les
+// fiches (dedup par nom normalise dans fusionnerEtDedupliquer), donc on obtient au
+// plus UNE fiche, sans aucune ré-ambiguïté. On part de trouverFichesClient (qui
+// inclut toujours la fiche dont le nom egale exactement la recherche) puis on filtre
+// par egalite stricte, JAMAIS par le matching souple. Lecture seule (GET + SELECT).
+export async function trouverFicheClientExacte(
+  nomCanonique: string,
+  contactsPreCharges?: CostructorContact[],
+): Promise<FicheClient | null> {
+  const cible = normaliser(nomCanonique)
+  if (!cible) return null
+  const { fiches } = await trouverFichesClient(nomCanonique, contactsPreCharges)
+  return fiches.find((f) => normaliser(f.nom) === cible) ?? null
+}
+
 // ---------- Bornage : resume vs coordonnees completes ----------
 
 // Resume BORNE d'une fiche (listes et homonymes) : nom + ville + un email + un
@@ -239,6 +255,28 @@ export function resumeContact(f: FicheClient) {
     ville: principale?.ville ?? null,
     email: f.emails[0] ?? null,
     telephone: f.telephones[0] ?? null,
+    origine: f.origine,
+  }
+}
+
+// Candidat cliquable (amelioration 4) : forme STRUCTUREE renvoyee au frontend quand
+// un nom est ambigu, construite EN CODE a partir d'une vraie fiche (jamais par le
+// LLM). `valeur` = nom canonique exact, a renvoyer tel quel en clientForce pour
+// resoudre une seule fiche au clic. `ville` + `origine` servent a distinguer deux
+// homonymes a l'affichage (ville et badge « fiche app »).
+export interface CandidatClient {
+  libelle: string
+  valeur: string
+  ville: string | null
+  origine: 'costructor' | 'app'
+}
+
+export function candidatDepuisFiche(f: FicheClient): CandidatClient {
+  const principale = f.adresses.find((a) => a.principale) ?? f.adresses[0] ?? null
+  return {
+    libelle: f.nom,
+    valeur: f.nom,
+    ville: principale?.ville ?? null,
     origine: f.origine,
   }
 }
@@ -314,14 +352,37 @@ export interface ReponseClients {
   // Client effectivement traite (pour le contexte de conversation) : le nom
   // recherche, repris du contexte si la question etait un suivi. null si aucun.
   clientResolu: string | null
+  // Candidats cliquables (amelioration 4) : present UNIQUEMENT en cas d'ambiguite
+  // (plusieurs homonymes). Absent sinon (comportement non ambigu inchange).
+  candidats?: CandidatClient[]
 }
 
 export async function repondreQuestionClients(
   question: string,
   contactsPreCharges?: CostructorContact[],
   clientContexte?: string | null,
+  // Clic sur un candidat (amelioration 4) : nom canonique exact a forcer.
+  clientForce?: string | null,
 ): Promise<ReponseClients> {
   const contactsCostructor = contactsPreCharges ?? (await listerContacts())
+
+  // Clic sur un candidat : resolution FORCEE par egalite exacte du nom canonique
+  // (un seul resultat garanti par la dedup). On repond la question d'origine sur CE
+  // client precis, sans nouvelle analyse ni ré-ambiguïté. Lecture seule.
+  if (clientForce && clientForce.trim()) {
+    const fiche = await trouverFicheClientExacte(clientForce.trim(), contactsCostructor)
+    const faits = fiche
+      ? {
+          mode: 'fiche_client',
+          client: coordonneesCompletes(fiche),
+          origine_app: fiche.origine === 'app',
+          correspondance_approchante: false,
+        }
+      : { mode: 'aucun_resultat', recherche: clientForce.trim(), ville: null }
+    const reponse = await redigerDepuisFaits({ question, sujet: 'fichier clients', faits })
+    return { reponse, nbContacts: fiche ? 1 : 0, clientResolu: fiche?.nom ?? clientForce.trim() }
+  }
+
   const intent = await analyserQuestionClients(question)
 
   // Liste "mes clients" : PRECISE, restreinte aux VRAIS clients Costructor
@@ -367,6 +428,8 @@ export async function repondreQuestionClients(
   if (intent.ville) base = base.filter((f) => correspondVille(f, intent.ville!))
 
   let faits: unknown
+  // Candidats cliquables : remplis SEULEMENT dans la branche d'ambiguite (en code).
+  let candidats: CandidatClient[] | undefined
   if (!clientEffectif) {
     // Aucun nom fourni (ni dans la question, ni en contexte) : on invite a preciser.
     faits = { mode: 'aucun_nom', message: 'aucun nom de client n\'a ete fourni dans la question' }
@@ -392,8 +455,10 @@ export async function repondreQuestionClients(
       clients: base.slice(0, LIMITE_LISTE).map(resumeContact),
       clients_tronques: Math.max(0, base.length - LIMITE_LISTE),
     }
+    // Memes candidats que ceux listes au redacteur, mais structures pour le clic.
+    candidats = base.slice(0, LIMITE_LISTE).map(candidatDepuisFiche)
   }
 
   const reponse = await redigerDepuisFaits({ question, sujet: 'fichier clients', faits })
-  return { reponse, nbContacts: base.length, clientResolu: clientEffectif }
+  return { reponse, nbContacts: base.length, clientResolu: clientEffectif, candidats }
 }

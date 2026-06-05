@@ -16,6 +16,7 @@ import { aiguiller, type DomaineAssistant } from './aiguilleur'
 import { repondreQuestionCr } from './domaine-comptes-rendus'
 import { repondreQuestionClients } from './domaine-clients'
 import { repondreRecapClient } from './domaine-recap'
+import type { CandidatClient } from './domaine-clients'
 
 export interface ReponseOrchestrateur {
   reponse: string
@@ -25,12 +26,19 @@ export interface ReponseOrchestrateur {
   // (questions de suivi « et son adresse ? »). null quand la question n'a pas porte
   // sur un client precis (le frontend conserve alors son contexte courant).
   clientContexte?: string | null
+  // Candidats cliquables (amelioration 4) : present quand un nom est ambigu
+  // (domaines clients / recap). Absent sinon.
+  candidats?: CandidatClient[]
 }
 
 // Contexte de conversation transmis par le frontend (lecture seule, sans session
 // serveur) : le dernier client evoque, pour resoudre les questions de suivi.
 export interface ContexteConversation {
   dernierClient?: string | null
+  // Clic sur un candidat (amelioration 4) : nom canonique exact a forcer + domaine
+  // d'origine (pour router directement sans ré-aiguiller). Les deux vont ensemble.
+  clientForce?: string | null
+  domaineForce?: DomaineAssistant | null
 }
 
 const MESSAGE_INCONNU =
@@ -42,6 +50,26 @@ export async function repondreAssistant(
   contexte?: ContexteConversation,
 ): Promise<ReponseOrchestrateur> {
   const clientContexte = contexte?.dernierClient ?? null
+  const clientForce = contexte?.clientForce ?? null
+  const domaineForce = contexte?.domaineForce ?? null
+
+  // Clic sur un candidat (amelioration 4) : on route DIRECTEMENT vers le domaine
+  // d'origine (clients ou recap) en forçant le client, sans ré-aiguiller. La
+  // question d'origine est rejouee telle quelle -> l'intention (adresse, recap...)
+  // est preservee, seul le « qui » est force.
+  if (clientForce && clientForce.trim()) {
+    if (domaineForce === 'recap_client') {
+      const { reponse, nb, clientResolu, candidats } = await repondreRecapClient(
+        question, clientContexte, clientForce,
+      )
+      return { reponse, domaine: 'recap_client', nb, clientContexte: clientResolu, candidats }
+    }
+    const { reponse, nbContacts, clientResolu, candidats } = await repondreQuestionClients(
+      question, undefined, clientContexte, clientForce,
+    )
+    return { reponse, domaine: 'clients', nb: nbContacts, clientContexte: clientResolu, candidats }
+  }
+
   // L'aiguilleur recoit le contexte (indice de routage des suivis) ; il ne fait
   // que classer le sujet, il n'invente jamais de client.
   const domaine = await aiguiller(question, clientContexte)
@@ -54,15 +82,15 @@ export async function repondreAssistant(
   }
 
   if (domaine === 'clients') {
-    const { reponse, nbContacts, clientResolu } = await repondreQuestionClients(
+    const { reponse, nbContacts, clientResolu, candidats } = await repondreQuestionClients(
       question, undefined, clientContexte,
     )
-    return { reponse, domaine, nb: nbContacts, clientContexte: clientResolu }
+    return { reponse, domaine, nb: nbContacts, clientContexte: clientResolu, candidats }
   }
 
   if (domaine === 'recap_client') {
-    const { reponse, nb, clientResolu } = await repondreRecapClient(question, clientContexte)
-    return { reponse, domaine, nb, clientContexte: clientResolu }
+    const { reponse, nb, clientResolu, candidats } = await repondreRecapClient(question, clientContexte)
+    return { reponse, domaine, nb, clientContexte: clientResolu, candidats }
   }
 
   if (domaine === 'inconnu') {
