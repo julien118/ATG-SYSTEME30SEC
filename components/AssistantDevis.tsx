@@ -13,10 +13,25 @@
 import { useEffect, useRef, useState } from 'react'
 import AudioRecorder from './AudioRecorder'
 
+// Candidat cliquable (amelioration 4) : forme renvoyee par l'API quand un nom est
+// ambigu. `valeur` = nom canonique exact a renvoyer en clientForce au clic.
+interface Candidat {
+  libelle: string
+  valeur: string
+  ville: string | null
+  origine: 'costructor' | 'app'
+}
+
 interface Message {
   id: number
   role: 'user' | 'bot'
   texte: string
+  // Boutons de desambiguisation affiches sous une bulle bot (amelioration 4). On
+  // memorise aussi la question d'origine a rejouer et le domaine d'origine, pour
+  // que le clic relance la bonne question sur le bon domaine.
+  candidats?: Candidat[]
+  questionOrigine?: string
+  domaine?: string
 }
 
 const EXEMPLES = [
@@ -80,26 +95,41 @@ export default function AssistantDevis() {
     if (ouvert) champRef.current?.focus()
   }, [ouvert])
 
-  async function envoyer(texte: string) {
-    const question = texte.trim()
-    if (!question || reflexion) return
-    const idUser = compteur.current++
-    setMessages((m) => [...m, { id: idUser, role: 'user', texte: question }])
-    setSaisie('')
+  // Coeur d'un echange : affiche une bulle utilisateur, appelle l'API et affiche la
+  // reponse du bot. `corps` est le corps de la requete (question + eventuels
+  // clientForce/domaineForce pour un clic sur un candidat). On memorise sur la bulle
+  // bot les candidats renvoyes + la question d'origine + le domaine, pour les boutons.
+  async function poser(
+    corps: { question: string; clientForce?: string; domaineForce?: string },
+    texteUtilisateur: string,
+  ) {
+    if (reflexion) return
+    setMessages((m) => [...m, { id: compteur.current++, role: 'user', texte: texteUtilisateur }])
     setReflexion(true)
     try {
       const res = await fetch('/api/assistant-devis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // On transmet le dernier client evoque pour les questions de suivi.
-        body: JSON.stringify({ question, dernierClient }),
+        body: JSON.stringify({ ...corps, dernierClient }),
       })
       const data = await res.json().catch(() => ({}))
       const reponse =
         res.ok && data.reponse
           ? data.reponse
           : data.error || 'Désolé, je n\'ai pas pu répondre.'
-      setMessages((m) => [...m, { id: compteur.current++, role: 'bot', texte: reponse }])
+      const candidats = Array.isArray(data.candidats) ? (data.candidats as Candidat[]) : undefined
+      setMessages((m) => [
+        ...m,
+        {
+          id: compteur.current++,
+          role: 'bot',
+          texte: reponse,
+          candidats,
+          questionOrigine: corps.question,
+          domaine: typeof data.domaine === 'string' ? data.domaine : undefined,
+        },
+      ])
       // On met a jour le contexte UNIQUEMENT si l'API a resolu un client (non null) :
       // une question generale renvoie null et on conserve alors le contexte courant.
       if (typeof data.clientContexte === 'string' && data.clientContexte) {
@@ -113,6 +143,26 @@ export default function AssistantDevis() {
     } finally {
       setReflexion(false)
     }
+  }
+
+  async function envoyer(texte: string) {
+    const question = texte.trim()
+    if (!question || reflexion) return
+    setSaisie('')
+    await poser({ question }, question)
+  }
+
+  // Clic sur un candidat (amelioration 4) : on REJOUE la question d'origine en
+  // forçant le client choisi (clientForce = nom canonique exact) et le domaine
+  // d'origine. L'intention (adresse, recap...) est preservee car la question
+  // d'origine est rejouee telle quelle ; seul le « qui » est force.
+  function choisirCandidat(candidat: Candidat, questionOrigine: string, domaine: string) {
+    if (reflexion) return
+    const texteUtilisateur = candidat.ville ? `${candidat.libelle}, ${candidat.ville}` : candidat.libelle
+    void poser(
+      { question: questionOrigine, clientForce: candidat.valeur, domaineForce: domaine },
+      texteUtilisateur,
+    )
   }
 
   // Dictee vocale : on envoie le blob au MEME endpoint que les notes de visite
@@ -219,9 +269,38 @@ export default function AssistantDevis() {
             )}
 
             {messages.map((m) => (
-              <Bulle key={m.id} role={m.role}>
-                {m.role === 'bot' ? formaterTexte(m.texte) : m.texte}
-              </Bulle>
+              <div key={m.id} className="space-y-2">
+                <Bulle role={m.role}>
+                  {m.role === 'bot' ? formaterTexte(m.texte) : m.texte}
+                </Bulle>
+                {/* Boutons de desambiguisation (amelioration 4) : uniquement sous une
+                    bulle bot porteuse de candidats. Construits a partir des donnees
+                    renvoyees par l'API (jamais inventes). */}
+                {m.role === 'bot' && m.candidats && m.candidats.length > 0 && (
+                  <div className="flex flex-col gap-2 pl-1">
+                    {m.candidats.map((c, i) => (
+                      <button
+                        key={`${m.id}-${i}`}
+                        onClick={() => choisirCandidat(c, m.questionOrigine ?? '', m.domaine ?? 'clients')}
+                        disabled={reflexion}
+                        className="flex items-center justify-between gap-2 text-left bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-xl px-3 py-2 transition active:scale-[0.98] disabled:opacity-50"
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-foreground truncate">{c.libelle}</span>
+                          {c.ville && (
+                            <span className="block text-xs text-gray-500 truncate">{c.ville}</span>
+                          )}
+                        </span>
+                        {c.origine === 'app' && (
+                          <span className="shrink-0 text-[10px] font-medium text-primary-dark bg-primary/15 border border-primary/20 rounded-full px-2 py-0.5">
+                            fiche app
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
 
             {/* Indicateur de reflexion */}
