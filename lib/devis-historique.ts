@@ -54,13 +54,18 @@ export interface IntentRequete {
   client: string | null
   typologie: string | null // famille ('ravalement'|'ite') ou clé de variante
   periode: { debut: string | null; fin: string | null } | null
+  // Fourchette de montant HT demandee, EN EUROS (ex « plus de 5000 » => {min:5000}).
+  // min seul, max seul, ou les deux. null si aucun montant chiffre n'est demande
+  // (on n'invente jamais de seuil : « gros devis » sans chiffre reste null et c'est
+  // l'intention top_montant qui s'en charge par le tri).
+  montant: { min: number | null; max: number | null } | null
   agregat: 'somme' | 'moyenne' | 'max' | 'min' | 'compte' | null
   limite: number | null
 }
 
 export interface ResultatRequete {
   intention: string
-  filtres: { client: string | null; typologie: string | null; periode: { debut: string | null; fin: string | null } | null }
+  filtres: { client: string | null; typologie: string | null; periode: { debut: string | null; fin: string | null } | null; montant: { min: number | null; max: number | null } | null }
   nbDevis: number
   devis: DevisResume[] // devis correspondants (tries selon l'intention)
   agregat: { type: string; valeurCentimes: number | null; valeurNombre: number | null } | null
@@ -162,6 +167,7 @@ Reponds STRICTEMENT en JSON valide (aucun texte autour, pas de markdown), schema
   "client": "<nom de client recherche, ou null>",
   "typologie": "<ravalement | ite | ravalement_i3_peinture | ravalement_i3_taloche | ravalement_i4_taloche | ite_detaille | ite_standard | null>",
   "periode": { "debut": "YYYY-MM-DD ou null", "fin": "YYYY-MM-DD ou null" },
+  "montant": { "min": <nombre en euros ou null>, "max": <nombre en euros ou null> },
   "agregat": "somme | moyenne | max | min | compte | null",
   "limite": <nombre pour un top N, ou null>
 }
@@ -171,6 +177,7 @@ REGLES :
 - "client" : uniquement si un client precis est nomme, sinon null.
 - "typologie" : "ravalement" ou "ite" pour la famille ; une cle precise si la variante est claire (I3 peinture, I4, ITE detaillee...). Sinon null.
 - "periode" : convertis les expressions relatives en dates absolues a partir de la DATE DU JOUR. "en mai" => mois de mai de l'annee courante. Si aucune periode, mets debut et fin a null.
+- "montant" : fourchette de montant HT EN EUROS demandee explicitement. "plus de 5000" / "au-dessus de 5000" / "a partir de 5000" => { "min": 5000, "max": null } ; "moins de 3000" / "en dessous de 3000" / "jusqu'a 3000" => { "min": null, "max": 3000 } ; "entre 3000 et 8000" => { "min": 3000, "max": 8000 }. N'INVENTE JAMAIS de seuil : si AUCUN chiffre de montant n'est dit, mets min ET max a null. Attention : "gros devis", "les plus gros", "mes plus petits" SANS chiffre ne sont PAS des montants (laisse min et max a null ; c'est l'intention top_montant qui s'en occupe). Une limite de top N ("mes 3 plus gros") n'est pas un montant non plus.
 - "agregat" : "somme" pour un total/chiffre d'affaires, "moyenne" pour un prix moyen, "max"/"min" pour le plus gros/petit, "compte" pour un nombre. null si pas d'agregat.
 - "limite" : pour "mes 3 plus gros devis" => 3. Sinon null.
 - N'invente aucun filtre non demande.`
@@ -180,6 +187,23 @@ function extraireJson(texte: string): any {
   const m = texte.match(/\{[\s\S]*\}/)
   if (!m) throw new Error('Aucun JSON dans la reponse d\'analyse.')
   return JSON.parse(m[0])
+}
+
+// Normalise le champ "montant" renvoye par l'analyse en une fourchette propre EN
+// EUROS. On ne garde une borne que si c'est un nombre fini et positif (>= 0) :
+// toute valeur absente, nulle, negative ou non numerique => borne a null (jamais
+// de seuil invente). Renvoie null si aucune borne exploitable (= pas de filtre
+// montant), pour que les questions sans montant restent strictement identiques.
+function normaliserMontant(
+  m: any,
+): { min: number | null; max: number | null } | null {
+  const borne = (v: any): number | null =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null
+  if (!m || typeof m !== 'object') return null
+  const min = borne(m.min)
+  const max = borne(m.max)
+  if (min === null && max === null) return null
+  return { min, max }
 }
 
 export async function analyserQuestion(
@@ -199,6 +223,7 @@ export async function analyserQuestion(
     client: p.client ?? null,
     typologie: p.typologie ?? null,
     periode: p.periode && (p.periode.debut || p.periode.fin) ? { debut: p.periode.debut ?? null, fin: p.periode.fin ?? null } : null,
+    montant: normaliserMontant(p.montant),
     agregat: p.agregat ?? null,
     limite: typeof p.limite === 'number' ? p.limite : null,
   }
@@ -249,6 +274,18 @@ export function executerRequete(
     const { debut, fin } = intent.periode
     base = base.filter((d) => d.dateISO && (!debut || d.dateISO >= debut) && (!fin || d.dateISO <= fin))
   }
+  // Filtre MONTANT (HT), chaine apres les autres (combinaison ET). Les bornes sont
+  // en EUROS cote intent ; on compare en centimes (montantHTCentimes) en
+  // convertissant les bornes (* 100), bornes incluses. min seul, max seul ou les
+  // deux sont geres. Aucun chiffre n'est invente : on filtre les VRAIS montants.
+  if (intent.montant) {
+    const { min, max } = intent.montant
+    base = base.filter(
+      (d) =>
+        (min === null || d.montantHTCentimes >= min * 100) &&
+        (max === null || d.montantHTCentimes <= max * 100),
+    )
+  }
 
   const sommeC = base.reduce((s, d) => s + d.montantHTCentimes, 0)
   let agregat: ResultatRequete['agregat'] = null
@@ -286,7 +323,7 @@ export function executerRequete(
 
   return {
     intention: intent.intention,
-    filtres: { client: intent.client, typologie: intent.typologie, periode: intent.periode },
+    filtres: { client: intent.client, typologie: intent.typologie, periode: intent.periode, montant: intent.montant },
     nbDevis: base.length,
     devis: devisOrdonnes,
     agregat,
