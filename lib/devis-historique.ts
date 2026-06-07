@@ -336,6 +336,29 @@ export function executerRequete(
 const fmtEuros = (centimes: number): string =>
   (centimes / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 
+// Decrit les filtres appliques en une liste de criteres LISIBLES (français), de
+// facon DETERMINISTE (en code, pas par le LLM) : le redacteur peut ainsi rappeler
+// exactement les criteres demandes, surtout quand aucun devis ne correspond. Ne
+// liste que les criteres reellement poses (les null sont ignores).
+export function decrireCriteres(filtres: ResultatRequete['filtres']): string[] {
+  const criteres: string[] = []
+  if (filtres.client) criteres.push(`client « ${filtres.client} »`)
+  if (filtres.typologie) criteres.push(`typologie ${filtres.typologie}`)
+  if (filtres.montant) {
+    const { min, max } = filtres.montant
+    if (min != null && max != null) criteres.push(`montant entre ${fmtEuros(min * 100)} et ${fmtEuros(max * 100)}`)
+    else if (min != null) criteres.push(`montant de plus de ${fmtEuros(min * 100)}`)
+    else if (max != null) criteres.push(`montant de moins de ${fmtEuros(max * 100)}`)
+  }
+  if (filtres.periode) {
+    const { debut, fin } = filtres.periode
+    if (debut && fin) criteres.push(`periode du ${debut} au ${fin}`)
+    else if (debut) criteres.push(`a partir du ${debut}`)
+    else if (fin) criteres.push(`jusqu'au ${fin}`)
+  }
+  return criteres
+}
+
 // Construit l'objet de FAITS deja calcules (montants en euros) passe a Claude.
 function construireFaits(resultat: ResultatRequete) {
   const LIMITE_LISTE = 20
@@ -349,6 +372,8 @@ function construireFaits(resultat: ResultatRequete) {
         }
       : null,
     filtres: resultat.filtres,
+    // Criteres demandes, deja mis en mots (pour rappel par le redacteur, surtout a 0 resultat).
+    criteres_demandes: decrireCriteres(resultat.filtres),
     devis: resultat.devis.slice(0, LIMITE_LISTE).map((d) => ({
       numero: d.numero,
       client: d.clientNom,
@@ -372,7 +397,8 @@ ${JSON.stringify(faits, null, 2)}
 
 REGLES STRICTES :
 - N'invente AUCUN chiffre. Tous les montants, moyennes et comptes que tu cites doivent venir EXACTEMENT des FAITS ci-dessus (champ "agregat" ou "montant_ht" des devis). Ne recalcule rien toi-meme.
-- Si "nombre_de_devis" vaut 0, dis clairement qu'aucun devis ne correspond a la demande, sans inventer.
+- Si "nombre_de_devis" vaut 0 : dis clairement qu'AUCUN devis ne correspond, sans inventer. Si "criteres_demandes" contient PLUSIEURS criteres, formule-le « aucun devis ne correspond a tous ces criteres » et RAPPELLE les criteres demandes (liste "criteres_demandes" telle quelle). S'il n'y a qu'un seul critere (ou aucun), une formulation simple suffit (« aucun devis ne correspond a cette demande »).
+- Quand il y a des resultats et que "criteres_demandes" n'est pas vide, tu peux rappeler brievement les criteres utilises (repris de "criteres_demandes"), sans en inventer d'autres.
 - Si "correspondance_approchante" vaut true, le nom de client demande ne correspond pas exactement a celui des devis trouves (faute de frappe ou variante). Cite le nom EXACT du client tel qu'il figure dans les devis (champ "client") et invite Olivier a confirmer que c'est bien le bon client (ex : "j'ai trouve des devis pour <nom exact>, est-ce bien ce client ?"). N'invente aucun nom.
 - Reprends les montants tels quels (format euros fourni). Tu peux citer le client, la date, la typologie et le numero des devis.
 - Si "devis_tronques" est superieur a 0, precise que tu ne montres que les premiers (par ex. les 20 premiers).
