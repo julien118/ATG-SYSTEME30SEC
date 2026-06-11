@@ -36,6 +36,11 @@ export interface ResultatRoutage {
   modeleId: string | null
   modeleDescription: string | null
   confiance: NiveauConfiance
+  // Marge de separation de famille (|scoreIte - scoreRav|). Signal FRANC de
+  // « clairement ITE » ou « clairement ravalement », independant de l'unicite du
+  // modele. Sert d'aiguilleur (commit 2) la ou la confiance globale, qui exige un
+  // modele unique, retombe a 'basse' sur des repliques identiques du compte test.
+  margeFamille: number
   raison: string
   alternatives: Array<{ typologie: string; libelle: string; score: number }>
 }
@@ -184,6 +189,7 @@ export function selectionnerModele(
       modeleId: null,
       modeleDescription: null,
       confiance: 'aucune',
+      margeFamille: 0,
       raison:
         'Aucun mot-clé de famille (ravalement / peinture / taloché / ITE / isolation...) trouvé. Routage manuel requis.',
       alternatives: [],
@@ -199,9 +205,15 @@ export function selectionnerModele(
   const seconde = variantes[1]
   const def = TYPOLOGIES.find((t) => t.cle === meilleure.typologie)!
 
-  const candidats = modelesUtiles.filter((m) =>
-    def.matchModele(normaliser(m.description ?? '')),
-  )
+  const candidats = modelesUtiles
+    .filter((m) => def.matchModele(normaliser(m.description ?? '')))
+    // Choix deterministe parmi des repliques (compte test) : on prend la PLUS
+    // RECENTE. Les ids Costructor sont des ULID ordonnes dans le temps ; sur le
+    // compte test, d'anciennes repliques restent listees mais renvoient 404 au
+    // detail (_expand=lines), alors que la replique la plus recente est la bonne.
+    // Tri par id DECROISSANT = plus recent d'abord. Si meme ce choix echoue a la
+    // lecture, l'aiguillage retombe sur le moteur plat (fail-safe cote route).
+    .sort((a, b) => b.id.localeCompare(a.id))
 
   const alternatives = variantes
     .filter((v) => v.typologie !== meilleure.typologie && v.score > 0)
@@ -215,6 +227,7 @@ export function selectionnerModele(
       modeleId: null,
       modeleDescription: null,
       confiance: 'aucune',
+      margeFamille,
       raison: `Famille « ${famille} » (ITE=${scoreIte} / ravalement=${scoreRav}) mais aucun modèle « ${meilleure.libelle} » sur le compte test.`,
       alternatives,
     }
@@ -244,6 +257,7 @@ export function selectionnerModele(
     modeleId: choisi.id,
     modeleDescription: (choisi.description ?? '').replace(/<[^>]+>/g, '').trim(),
     confiance,
+    margeFamille,
     raison: `Famille ${famille} (ITE=${scoreIte}/rav=${scoreRav}, marge ${margeFamille}) ; variante « ${meilleure.libelle} » score ${meilleure.score} (marge ${margeVariante} sur « ${seconde?.libelle ?? '—'} »).${ambig}`,
     alternatives,
   }

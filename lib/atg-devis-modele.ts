@@ -15,8 +15,9 @@
 // (`getDevisOlivierLectureSeule`), jamais écrit.
 
 import { anthropic } from './anthropic'
-import { supprimerDevis, uniteVersCostructorId } from './costructor'
+import { stripHtml, supprimerDevis, uniteVersCostructorId } from './costructor'
 import { composerDescriptionAvecRapport } from './rapport-pdf'
+import type { ArticleDevis, SectionDevis } from './types'
 import {
   lireDevisCostructorId,
   memoriserDevisCostructorId,
@@ -663,6 +664,92 @@ export function sommeProduits(lines: LignePayload[]): number {
     else if (l.type === 'group') total += sommeProduits(l.lines)
   }
   return total
+}
+
+// ---------- Dérivation des sections éditables (Approche A, proposer) ----------
+// Le récap et la saisie des métrés d'Olivier ne changent PAS : on lui présente
+// des SectionDevis classiques (qu'il édite/remplit comme aujourd'hui), mais
+// dérivées de SON modèle au lieu de la bibliothèque plate. La fidélité au modèle
+// (TVA ligne par ligne, textes figés, structure) est récupérée au PUSH (commit
+// 3) à partir du snapshot figé du modèle. Ici, on ne produit QUE la surface
+// éditable : une ligne produit du modèle = un article (quantité null).
+
+// Aplatit les lignes PRODUIT d'un groupe du modèle en articles éditables.
+// Préserve l'ordre, rattache le sous-titre texte courant au libellé (pour
+// distinguer un même poste répété, ex « Partie chauffée » / « Partie non
+// chauffée »), et pose une ref d'occurrence stable `product.id#k` reliant
+// l'article à la bonne ligne du modèle au push. Les lignes TEXTE ne deviennent
+// pas des articles (elles restent dans le snapshot = squelette réinjecté au push).
+function produitsEnArticles(lignes: LigneModele[] | undefined): ArticleDevis[] {
+  const articles: ArticleDevis[] = []
+  const compteur = new Map<string, number>() // product.id -> prochaine occurrence
+  let sousTitre = ''
+  const walk = (ls: LigneModele[] | undefined) => {
+    for (const l of ordonner(ls)) {
+      if (l.type === 'text') {
+        sousTitre = stripHtml(l.description ?? '')
+      } else if (l.type === 'group') {
+        walk(l.lines)
+      } else if (l.type === 'product' && l.product?.id) {
+        const pid = l.product.id
+        const occ = compteur.get(pid) ?? 0
+        compteur.set(pid, occ + 1)
+        const texteLigne = stripHtml(l.description ?? '')
+        const base = stripHtml(l.product.name ?? '') || texteLigne
+        const libelle = sousTitre ? `${sousTitre} - ${base}` : base
+        articles.push({
+          costructor_article_id: pid,
+          libelle,
+          unite: l.unit?.symbol ?? '',
+          prix_vente: (l.sellPrice ?? 0) / 100, // centimes modèle -> euros (ArticleDevis)
+          quantite: null, // Olivier saisit la quantité au récap (inchangé)
+          description_technique: texteLigne, // texte du modèle = mots d'Olivier
+          ref_modele: `${pid}#${occ}`,
+        })
+      }
+    }
+  }
+  walk(lignes)
+  return articles
+}
+
+// Dérive des SectionDevis éditables depuis l'arbre d'un devis-modèle, pour le
+// récap. UNE section par façade détectée (le motif façade du modèle est
+// instancié pour chaque façade dictée, avec son nom) ; chaque autre groupe du
+// modèle (en-tête transversal, éco...) donne une section portant son titre.
+// Seules les lignes PRODUIT deviennent des articles éditables. Renvoie [] si le
+// modèle n'a aucun produit exploitable (l'appelant retombe alors sur le plat).
+export function deriverSectionsDepuisModele(
+  modeleLines: LigneModele[],
+  nomsFacades: string[],
+): SectionDevis[] {
+  const sections: SectionDevis[] = []
+  let facadesEmises = false
+  for (const ligne of ordonner(modeleLines)) {
+    if (ligne.type !== 'group') continue
+    const classe = classifierGroupe(ligne)
+    if (classe === 'facade') {
+      if (!facadesEmises) {
+        // Instancie le motif de façade une fois par façade dictée (refs reset
+        // par appel : chaque façade a son propre product.id#0, product.id#1...).
+        for (const nom of nomsFacades) {
+          const articles = produitsEnArticles(ligne.lines)
+          if (articles.length > 0) sections.push({ nom, articles })
+        }
+        facadesEmises = true
+      }
+      // groupes façade suivants = doublons du motif -> ignorés
+    } else {
+      const articles = produitsEnArticles(ligne.lines)
+      if (articles.length > 0) {
+        sections.push({
+          nom: stripHtml(ligne.description ?? '') || classe.toUpperCase(),
+          articles,
+        })
+      }
+    }
+  }
+  return sections
 }
 
 // ---------- Push BROUILLON (écriture compte test UNIQUEMENT) ----------

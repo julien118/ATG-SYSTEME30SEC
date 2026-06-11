@@ -97,6 +97,12 @@ export interface ArticleDevis {
   // de la zone (Façade Sud / Nord / Pignon Est) et des observations dictées.
   // Visible avant la saisie des métrés (Phase A) puis poussée dans Costructor.
   description_technique: string
+  // Ref d'occurrence stable vers la ligne PRODUIT du modele dont cet article est
+  // derive (moteur clonage), ex 'prod_xxx#0' / 'prod_xxx#1' pour distinguer un
+  // meme poste repete (partie chauffee / non chauffee). Permet au push (commit 3)
+  // de relier l'article a la bonne ligne du modele. Absent en moteur plat
+  // (article issu de la bibliotheque, sans modele d'origine).
+  ref_modele?: string
 }
 
 export interface SectionDevis {
