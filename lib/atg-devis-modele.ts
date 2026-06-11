@@ -251,6 +251,15 @@ const MESURE_FACADE: Partial<Record<RoleProduit, keyof MetresFacade>> = {
   fixation: 'nb_fixation',
 }
 
+// Rôles des postes à quantité FIXE (forfaits indépendants du chantier) :
+// éco-contribution, déplacement / installation de chantier, gestion des déchets.
+// On les pré-remplit à la dérivation avec la quantité du modèle (sous-étape B)
+// pour qu'ils ne soient pas supprimés faute de saisie. On EXCLUT volontairement
+// échafaudage / lavage / traitement (métrés surfaciques dont la qté modèle est un
+// placeholder propre à l'ancien devis) et tous les rôles MESURE_FACADE : leur
+// quantité dépend du chantier et reste saisie par Olivier (null par défaut).
+const ROLES_FORFAIT_FIXE = new Set<RoleProduit>(['eco', 'deplacement', 'dechets'])
+
 // ---------- Extraction des métrés depuis la dictée (Claude) ----------
 
 const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
@@ -708,12 +717,22 @@ function produitsEnArticles(
         const texteLigne = stripHtml(l.description ?? '')
         const base = stripHtml(l.product.name ?? '') || texteLigne
         const libelle = sousTitre ? `${sousTitre} - ${base}` : base
+        // Pré-remplissage des forfaits FIXES (sous-étape B) : un poste forfait
+        // (éco-contribution, déplacement, déchets) porte une quantité fixe dans
+        // le modèle, pas un métré qu'Olivier saisit. On le pré-remplit avec la
+        // quantité du modèle pour qu'il ne soit pas supprimé par « qté vide = non
+        // poussée ». Ce n'est qu'un DÉFAUT : l'article reste éditable au récap
+        // (Olivier peut le changer ou le vider). Les métrés (façade, échafaudage /
+        // lavage / traitement surfaciques) restent à null : Olivier les saisit.
+        const estForfaitFixe = ROLES_FORFAIT_FIXE.has(
+          roleProduit(l.description || l.product.name || ''),
+        )
         articles.push({
           costructor_article_id: pid,
           libelle,
           unite: l.unit?.symbol ?? '',
           prix_vente: (l.sellPrice ?? 0) / 100, // centimes modèle -> euros (ArticleDevis)
-          quantite: null, // Olivier saisit la quantité au récap (inchangé)
+          quantite: estForfaitFixe ? l.quantity ?? 1 : null,
           description_technique: texteLigne, // texte du modèle = mots d'Olivier
           ref_modele: `${origine}:${pid}#${occ}`,
         })
