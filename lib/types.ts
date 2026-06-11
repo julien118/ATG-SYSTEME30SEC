@@ -111,6 +111,24 @@ export type DevisStatut =
   | 'pousse_costructor'
   | 'echec'
 
+// Moteur ayant produit le devis (socle ITE).
+//   'plat'    = moteur historique (bibliotheque plate + IA), comportement actuel.
+//   'clonage' = moteur de clonage du devis-modele d'Olivier (ITE, branche plus tard).
+export type MoteurDevis = 'plat' | 'clonage'
+
+// Snapshot fige de l'arbre d'un devis-modele Costructor (reponse GET
+// /quotes/{id}?_expand=lines), capture sur le devis a la derivation pour que le
+// push en mode clonage reconstruise a l'identique sans re-interroger Costructor.
+// Volontairement permissif (stocke en JSONB) : la forme exacte des lignes est
+// portee par `LigneModele` dans lib/atg-devis-modele.ts. On NE l'importe PAS ici
+// pour ne pas creer de cycle (types -> atg-devis-modele -> costructor -> types) ;
+// le consommateur (push clonage) castera `lines` en LigneModele[].
+export interface ModeleSnapshot {
+  id?: string | null
+  subtotal?: number | null
+  lines: unknown[]
+}
+
 export interface Devis {
   id: string
   chantier_id: string
@@ -126,6 +144,12 @@ export interface Devis {
   costructor_devis_url: string | null
   pousse_le: string | null
   erreur_push: string | null
+  // Moteur de generation (socle ITE). Defaut 'plat' = comportement actuel ; le
+  // clonage n'est encore aiguille nulle part a ce stade. modele_id/modele_snapshot
+  // ne sont renseignes qu'en mode 'clonage' (null en mode plat).
+  moteur: MoteurDevis
+  modele_id: string | null
+  modele_snapshot: ModeleSnapshot | null
   cree_le: string
   modifie_le: string
 }
