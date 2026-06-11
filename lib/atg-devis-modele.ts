@@ -32,8 +32,12 @@ import {
 // éviter un cycle d'import avec costructor.ts. Ré-exportés ici pour que les
 // scripts existants (`import { assertCompteJulien } from '../lib/atg-devis-modele'`)
 // continuent de fonctionner.
-import { assertCompteJulien, bannerCompte } from './costructor-compte'
-export { assertCompteJulien, bannerCompte }
+import {
+  assertCompteJulien,
+  bannerCompte,
+  compteCibleCostructor,
+} from './costructor-compte'
+export { assertCompteJulien, bannerCompte, compteCibleCostructor }
 
 const BASE_URL =
   process.env.COSTRUCTOR_API_BASE_URL || 'https://api.costructor.co/external/v1'
@@ -164,14 +168,11 @@ export async function getDevisOlivierLectureSeule(path: string): Promise<any> {
 }
 
 // ---------- Source du modèle : compte test (défaut) ou Olivier (GET seul) ----------
-// RÉGLAGE UNIQUE de la cible de LECTURE du modèle (ATG_COSTRUCTOR_CIBLE). Ne pilote
-// QUE la lecture : toute écriture passe par assertCompteJulien (clé du compte test),
-// jamais par la clé d'Olivier. Défaut 'test' => parcours strictement inchangé.
-// 'olivier' = lecture GET seule (la vraie bascule lecture+écriture viendra à part,
-// avec modification délibérée du garde-fou). Voir assertSnapshotPoussableSurTest.
-export function compteCibleCostructor(): CompteCostructor {
-  return process.env.ATG_COSTRUCTOR_CIBLE === 'olivier' ? 'olivier' : 'test'
-}
+// La cible (ATG_COSTRUCTOR_CIBLE) est lue par compteCibleCostructor(), désormais
+// définie dans ./costructor-compte (module neutre, source unique partagée avec les
+// gardes d'écriture) et ré-exportée en tête de ce fichier. 'test' (défaut) =
+// lecture sur le compte test ; 'olivier' = lecture GET seule sur le compte
+// d'Olivier. Voir aussi assertSnapshotCoherentAvecCible (garde de cohérence au push).
 
 // Liste les devis-modèles du compte CIBLE (lecture). 'test' = compte test (clé
 // d'écriture, comportement actuel) ; 'olivier' = compte d'Olivier en GET seul.
@@ -193,17 +194,23 @@ export async function lireModeleExpand(id: string): Promise<any> {
 
 // Garde de COHÉRENCE (anti-état-bancal) : les product.id / tax.id d'un modèle sont
 // PROPRES au compte. Un snapshot lu sur un compte ne peut être poussé que sur CE
-// compte. L'écriture allant toujours sur le compte test (assertCompteJulien), un
-// snapshot marqué 'olivier' ne doit JAMAIS être poussé ici : on jette clairement.
-// (Absent => 'test', cas des devis antérieurs lus sur le compte test.)
-export function assertSnapshotPoussableSurTest(snapshot: {
+// MÊME compte. On exige donc que la SOURCE du snapshot corresponde à la CIBLE
+// courante (compteCibleCostructor) :
+//   - cible 'test'    : seuls les snapshots 'test' (ou absents = historiques test) passent ;
+//   - cible 'olivier' : seuls les snapshots 'olivier' passent — les vieux snapshots
+//     'test' sont alors bloqués (leurs ids appartiennent au compte test), ce qui
+//     couvre le piège des anciens devis pour le chemin clonage.
+// (compte absent => 'test', cas des devis antérieurs lus sur le compte test.)
+export function assertSnapshotCoherentAvecCible(snapshot: {
   compte?: CompteCostructor
 }): void {
   const source = snapshot.compte ?? 'test'
-  if (source !== 'test') {
+  const cible = compteCibleCostructor()
+  if (source !== cible) {
     throw new Error(
-      `STOP (cohérence) : modèle lu sur le compte « ${source} » mais écriture sur le compte test. ` +
-        'Les ids produit/taxe sont propres au compte : réservé à la bascule (lecture + écriture sur le même compte).',
+      `STOP (cohérence) : modèle lu sur le compte « ${source} » mais écriture visant ` +
+        `« ${cible} ». Les ids produit/taxe sont propres au compte : un snapshot ne peut ` +
+        'être poussé que sur le compte d\'où il a été lu.',
     )
   }
 }

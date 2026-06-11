@@ -1,9 +1,10 @@
 // A3 - Gardes de securite : PUR, aucun reseau. Verrouille les invariants NON
-// negociables : (1) un snapshot lu chez Olivier ne peut pas etre pousse sur le
-// compte test (assertSnapshotPoussableSurTest) ; (2) assertCompteJulien refuse
-// la cle d'Olivier et l'absence de cle (toute ecriture passe par la).
+// negociables : (1) la source d'un snapshot doit correspondre a la cible courante
+// (assertSnapshotCoherentAvecCible : cible 'test' par defaut ici, donc un snapshot
+// Olivier est refuse) ; (2) assertCompteJulien refuse la cle d'Olivier (cible non
+// 'olivier') et l'absence de cle (toute ecriture passe par la).
 
-import { assertSnapshotPoussableSurTest } from '../../lib/atg-devis-modele'
+import { assertSnapshotCoherentAvecCible } from '../../lib/atg-devis-modele'
 import { assertCompteJulien } from '../../lib/costructor-compte'
 import { ko, ok, type Resultat } from './utils.mts'
 
@@ -19,15 +20,15 @@ function jette(fn: () => void): boolean {
 export async function testGardes(): Promise<Resultat[]> {
   const res: Resultat[] = []
 
-  // (1) Garde de coherence snapshot -> ecriture.
+  // (1) Garde de coherence snapshot -> ecriture (cible 'test' par defaut ici).
   res.push(
-    jette(() => assertSnapshotPoussableSurTest({ compte: 'olivier' }))
+    jette(() => assertSnapshotCoherentAvecCible({ compte: 'olivier' }))
       ? ok('A3 coherence : snapshot Olivier REFUSE au push test')
       : ko('A3 coherence : snapshot Olivier REFUSE au push test', "n'a pas jete"),
   )
   res.push(
-    !jette(() => assertSnapshotPoussableSurTest({ compte: 'test' })) &&
-      !jette(() => assertSnapshotPoussableSurTest({}))
+    !jette(() => assertSnapshotCoherentAvecCible({ compte: 'test' })) &&
+      !jette(() => assertSnapshotCoherentAvecCible({}))
       ? ok('A3 coherence : snapshot test / absent ACCEPTE')
       : ko('A3 coherence : snapshot test / absent ACCEPTE', 'a jete a tort'),
   )
