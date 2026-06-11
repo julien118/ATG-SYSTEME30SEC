@@ -16,6 +16,7 @@ import {
   trouverOuCreerContact,
 } from '@/lib/costructor'
 import {
+  assertSnapshotPoussableSurTest,
   pousserLignesGroupe,
   reconstruireDepuisSnapshot,
 } from '@/lib/atg-devis-modele'
@@ -129,6 +130,9 @@ export async function POST(request: Request) {
         // et update DB sont mutualises avec le chemin plat ; le garde-fou compte
         // test est dans pousserLignesGroupe. NB : forfaits fixes (eco /
         // transversaux a quantite 1) pre-remplis en sous-etape B.
+        // Garde de cohérence : un snapshot lu chez Olivier (ids propres au compte)
+        // ne peut PAS être poussé sur le compte test. Jette si source != test.
+        assertSnapshotPoussableSurTest(devis.modele_snapshot as ModeleSnapshot)
         const lignesClonage = reconstruireDepuisSnapshot(
           devis.modele_snapshot as ModeleSnapshot,
           sections,

@@ -12,10 +12,11 @@ import { ATG_USER_ID } from '@/lib/atg'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { selectionnerModele, type ModeleDevis } from '@/lib/atg-routing'
 import {
+  compteCibleCostructor,
   deriverSectionsDepuisModele,
   extraireMetres,
-  getModeleExpand,
-  listerModeles,
+  lireModeleExpand,
+  listerModelesCible,
 } from '@/lib/atg-devis-modele'
 import type {
   ArticleBibliotheque,
@@ -106,7 +107,7 @@ export async function POST(request: Request) {
       snapshot: ModeleSnapshot
     } | null = null
     try {
-      const modelesRaw = await listerModeles()
+      const modelesRaw = await listerModelesCible()
       const modeles: ModeleDevis[] = modelesRaw.map((m: any) => ({
         id: m.id,
         name: m.name ?? null,
@@ -125,7 +126,7 @@ export async function POST(request: Request) {
         routage.margeFamille >= 2 &&
         !!routage.modeleId
       if (iteConfiant) {
-        const modele = await getModeleExpand(routage.modeleId as string)
+        const modele = await lireModeleExpand(routage.modeleId as string)
         // Detection des facades depuis la dictee (on n'en garde que les NOMS :
         // les quantites seront saisies par Olivier au recap, Approche A).
         const metres = await extraireMetres(dicteeComplete)
@@ -145,6 +146,8 @@ export async function POST(request: Request) {
                 id: modele.id ?? null,
                 subtotal: modele.subtotal ?? null,
                 lines: modele.lines ?? [],
+                // Compte source (garde de cohérence au push) : la cible de lecture.
+                compte: compteCibleCostructor(),
               },
             }
           }

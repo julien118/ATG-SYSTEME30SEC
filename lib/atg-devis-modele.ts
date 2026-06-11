@@ -22,7 +22,7 @@ import {
   uniteVersCostructorId,
 } from './costructor'
 import { composerDescriptionAvecRapport } from './rapport-pdf'
-import type { ArticleDevis, SectionDevis } from './types'
+import type { ArticleDevis, CompteCostructor, SectionDevis } from './types'
 import {
   lireDevisCostructorId,
   memoriserDevisCostructorId,
@@ -161,6 +161,51 @@ export async function getDevisOlivierLectureSeule(path: string): Promise<any> {
   if (!r.ok) throw new Error(`Costructor (Olivier, GET) ${r.status} sur ${path}`)
   const j = (await r.json()) as { data?: any } & any
   return j.data !== undefined ? j.data : j
+}
+
+// ---------- Source du modèle : compte test (défaut) ou Olivier (GET seul) ----------
+// RÉGLAGE UNIQUE de la cible de LECTURE du modèle (ATG_COSTRUCTOR_CIBLE). Ne pilote
+// QUE la lecture : toute écriture passe par assertCompteJulien (clé du compte test),
+// jamais par la clé d'Olivier. Défaut 'test' => parcours strictement inchangé.
+// 'olivier' = lecture GET seule (la vraie bascule lecture+écriture viendra à part,
+// avec modification délibérée du garde-fou). Voir assertSnapshotPoussableSurTest.
+export function compteCibleCostructor(): CompteCostructor {
+  return process.env.ATG_COSTRUCTOR_CIBLE === 'olivier' ? 'olivier' : 'test'
+}
+
+// Liste les devis-modèles du compte CIBLE (lecture). 'test' = compte test (clé
+// d'écriture, comportement actuel) ; 'olivier' = compte d'Olivier en GET seul.
+export async function listerModelesCible(): Promise<any[]> {
+  if (compteCibleCostructor() === 'olivier') {
+    const tous = await getDevisOlivierLectureSeule('/quotes?_limit=1000')
+    return (tous as any[]).filter((q) => q.model)
+  }
+  return listerModeles()
+}
+
+// Lit un devis-modèle (arbre _expand=lines) sur le compte CIBLE.
+export async function lireModeleExpand(id: string): Promise<any> {
+  if (compteCibleCostructor() === 'olivier') {
+    return getDevisOlivierLectureSeule(`/quotes/${id}?_expand=lines`)
+  }
+  return getModeleExpand(id)
+}
+
+// Garde de COHÉRENCE (anti-état-bancal) : les product.id / tax.id d'un modèle sont
+// PROPRES au compte. Un snapshot lu sur un compte ne peut être poussé que sur CE
+// compte. L'écriture allant toujours sur le compte test (assertCompteJulien), un
+// snapshot marqué 'olivier' ne doit JAMAIS être poussé ici : on jette clairement.
+// (Absent => 'test', cas des devis antérieurs lus sur le compte test.)
+export function assertSnapshotPoussableSurTest(snapshot: {
+  compte?: CompteCostructor
+}): void {
+  const source = snapshot.compte ?? 'test'
+  if (source !== 'test') {
+    throw new Error(
+      `STOP (cohérence) : modèle lu sur le compte « ${source} » mais écriture sur le compte test. ` +
+        'Les ids produit/taxe sont propres au compte : réservé à la bascule (lecture + écriture sur le même compte).',
+    )
+  }
 }
 
 // ---------- Rôle d'un produit (par sa description) ----------

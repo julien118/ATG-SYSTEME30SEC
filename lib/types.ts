@@ -122,6 +122,12 @@ export type DevisStatut =
 //   'clonage' = moteur de clonage du devis-modele d'Olivier (ITE, branche plus tard).
 export type MoteurDevis = 'plat' | 'clonage'
 
+// Compte Costructor source d'un modele lu. 'test' = compte test Julien (clé
+// d'ecriture) ; 'olivier' = compte d'Olivier (lecture seule GET). Les product.id
+// / tax.id etant propres au compte, un snapshot lu sur un compte ne peut etre
+// pousse que sur CE compte (garde de coherence cote push).
+export type CompteCostructor = 'test' | 'olivier'
+
 // Snapshot fige de l'arbre d'un devis-modele Costructor (reponse GET
 // /quotes/{id}?_expand=lines), capture sur le devis a la derivation pour que le
 // push en mode clonage reconstruise a l'identique sans re-interroger Costructor.
@@ -133,6 +139,10 @@ export interface ModeleSnapshot {
   id?: string | null
   subtotal?: number | null
   lines: unknown[]
+  // Compte source du modele lu (garde de coherence au push : un snapshot lu chez
+  // Olivier ne peut pas etre pousse sur le compte test, ids propres au compte).
+  // Absent (devis anterieurs) => traite comme 'test'.
+  compte?: CompteCostructor
 }
 
 export interface Devis {
