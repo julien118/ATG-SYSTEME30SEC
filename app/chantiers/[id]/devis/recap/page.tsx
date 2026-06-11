@@ -228,6 +228,7 @@ export default async function RecapDevisPage({
             devisId={devis.id}
             totalHT={totalHT}
             tvaTauxInitial={devis.tva_taux ?? 10}
+            moteur={devis.moteur}
           />
         </div>
       </main>

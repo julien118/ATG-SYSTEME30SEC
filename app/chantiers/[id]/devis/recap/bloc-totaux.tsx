@@ -7,11 +7,16 @@
 // en direct cote client ; le HT vient du serveur (somme des metres).
 
 import { useState } from 'react'
+import type { MoteurDevis } from '@/lib/types'
 
 interface Props {
   devisId: string
   totalHT: number
   tvaTauxInitial: number
+  // Moteur du devis. En 'clonage' (ITE), la TVA vient du modele ligne par ligne :
+  // pas de selecteur de taux (il n'a plus de sens et pourrait induire en erreur).
+  // 'plat' (ravalement + devis existants) = comportement historique inchange.
+  moteur?: MoteurDevis
 }
 
 function formatEUR(n: number): string {
@@ -28,7 +33,12 @@ function normaliserTaux(valeur: number): number {
   return Math.min(100, Math.max(0, Math.round(valeur * 10) / 10))
 }
 
-export default function BlocTotaux({ devisId, totalHT, tvaTauxInitial }: Props) {
+export default function BlocTotaux({
+  devisId,
+  totalHT,
+  tvaTauxInitial,
+  moteur = 'plat',
+}: Props) {
   const [taux, setTaux] = useState<number>(normaliserTaux(tvaTauxInitial))
   // Texte brut du champ : permet la saisie intermediaire (champ vide, virgule).
   const [saisie, setSaisie] = useState<string>(String(normaliserTaux(tvaTauxInitial)))
@@ -36,6 +46,31 @@ export default function BlocTotaux({ devisId, totalHT, tvaTauxInitial }: Props) 
 
   const tva = Math.round(totalHT * (taux / 100) * 100) / 100
   const totalTTC = Math.round((totalHT + tva) * 100) / 100
+
+  // Mode clonage (ITE) : la TVA est reprise du modele d'Olivier ligne par ligne.
+  // On masque le selecteur de taux (sans objet ici) et on n'affiche pas de TTC a
+  // taux unique (il serait incoherent avec une TVA potentiellement mixte) : le
+  // total TTC exact figure sur le devis Costructor. Une mention rassure Olivier.
+  if (moteur === 'clonage') {
+    return (
+      <div className="w-full sm:w-80 rounded-xl border border-border bg-white overflow-hidden">
+        <div className="flex justify-between px-4 py-3 text-sm border-b border-border">
+          <span className="text-gray-500">Total HT</span>
+          <span className="font-semibold tabular-nums">{formatEUR(totalHT)}</span>
+        </div>
+        <div className="px-4 py-3 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-gray-500">TVA</span>
+            <span className="text-gray-700">Reprise du modèle ATG</span>
+          </div>
+          <p className="mt-1 text-[11px] text-gray-400">
+            Les taux de TVA sont repris ligne par ligne de votre modèle. Le total
+            TTC exact figure sur le devis.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   // Persiste le taux choisi sur la ligne devis. Appelee a la validation du champ
   // (perte de focus ou touche Entree) pour eviter un appel a chaque frappe.
