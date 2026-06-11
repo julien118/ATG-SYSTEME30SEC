@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:fidelite": "npx tsx --env-file=.env.local scripts/fidelite-clonage/index.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",
