@@ -15,7 +15,12 @@
 // (`getDevisOlivierLectureSeule`), jamais écrit.
 
 import { anthropic } from './anthropic'
-import { stripHtml, supprimerDevis, uniteVersCostructorId } from './costructor'
+import {
+  eurosVersCentimes,
+  stripHtml,
+  supprimerDevis,
+  uniteVersCostructorId,
+} from './costructor'
 import { composerDescriptionAvecRapport } from './rapport-pdf'
 import type { ArticleDevis, SectionDevis } from './types'
 import {
@@ -680,7 +685,13 @@ export function sommeProduits(lines: LignePayload[]): number {
 // chauffée »), et pose une ref d'occurrence stable `product.id#k` reliant
 // l'article à la bonne ligne du modèle au push. Les lignes TEXTE ne deviennent
 // pas des articles (elles restent dans le snapshot = squelette réinjecté au push).
-function produitsEnArticles(lignes: LigneModele[] | undefined): ArticleDevis[] {
+// La ref est PREFIXEE par l'origine du groupe-modele (facade / entete / eco /
+// autre) pour que le push retrouve sans ambiguite a quel groupe-modele rattacher
+// la section, meme si Olivier la renomme : ref = `origine:product.id#k`.
+function produitsEnArticles(
+  lignes: LigneModele[] | undefined,
+  origine: string,
+): ArticleDevis[] {
   const articles: ArticleDevis[] = []
   const compteur = new Map<string, number>() // product.id -> prochaine occurrence
   let sousTitre = ''
@@ -704,7 +715,7 @@ function produitsEnArticles(lignes: LigneModele[] | undefined): ArticleDevis[] {
           prix_vente: (l.sellPrice ?? 0) / 100, // centimes modèle -> euros (ArticleDevis)
           quantite: null, // Olivier saisit la quantité au récap (inchangé)
           description_technique: texteLigne, // texte du modèle = mots d'Olivier
-          ref_modele: `${pid}#${occ}`,
+          ref_modele: `${origine}:${pid}#${occ}`,
         })
       }
     }
@@ -733,14 +744,14 @@ export function deriverSectionsDepuisModele(
         // Instancie le motif de façade une fois par façade dictée (refs reset
         // par appel : chaque façade a son propre product.id#0, product.id#1...).
         for (const nom of nomsFacades) {
-          const articles = produitsEnArticles(ligne.lines)
+          const articles = produitsEnArticles(ligne.lines, 'facade')
           if (articles.length > 0) sections.push({ nom, articles })
         }
         facadesEmises = true
       }
       // groupes façade suivants = doublons du motif -> ignorés
     } else {
-      const articles = produitsEnArticles(ligne.lines)
+      const articles = produitsEnArticles(ligne.lines, classe)
       if (articles.length > 0) {
         sections.push({
           nom: stripHtml(ligne.description ?? '') || classe.toUpperCase(),
@@ -752,7 +763,220 @@ export function deriverSectionsDepuisModele(
   return sections
 }
 
+// ---------- Reconstruction au PUSH (Approche A, coeur du commit 3) ----------
+// Quand un devis moteur='clonage' est pousse, on rebatit l'arbre FIDELE du
+// modele depuis le snapshot fige, en REINJECTANT les quantites validees par
+// Olivier au recap (jointure sur ref_modele) et la TVA ligne par ligne du modele.
+//
+// La version validee par Olivier FAIT FOI : section renommee -> titre = son nom ;
+// article supprime -> sa ligne modele est omise ; article ajoute (sans ref) ->
+// ajoute dans sa section au taux dominant ; section ajoutee de zero -> groupe a
+// plat. Le modele fournit la structure, l'ordre, les sous-titres (option b) et
+// les prix unitaires. Les postes a quantite vide/supprimes sont omis avec leur
+// sous-titre orphelin (comportement de assemblerEnfants, reutilise tel quel).
+
+// Origine d'une section editee = prefixe de la ref de son 1er article qui en a
+// une (facade / entete / eco / autre). null = section ajoutee de zero par Olivier.
+function origineSection(s: SectionDevis): string | null {
+  for (const a of s.articles) {
+    const ref = a.ref_modele
+    if (ref) {
+      const i = ref.indexOf(':')
+      if (i > 0) return ref.slice(0, i)
+    }
+  }
+  return null
+}
+
+// Un groupe-modele porte-t-il au moins une ligne produit (recursif) ?
+function groupeAProduits(g: LigneModele): boolean {
+  for (const l of g.lines ?? []) {
+    if (l.type === 'product') return true
+    if (l.type === 'group' && groupeAProduits(l)) return true
+  }
+  return false
+}
+
+// Reproduit tel quel un groupe-modele PUREMENT texte (qualifications, conditions
+// figees...) : squelette reinjecte au push, jamais edite par Olivier.
+function reproduireGroupeTexte(g: LigneModele): LignePayload {
+  const lines: LignePayload[] = []
+  for (const l of ordonner(g.lines)) {
+    if (l.type === 'text') lines.push({ type: 'text', description: l.description ?? '' })
+    else if (l.type === 'group') lines.push(reproduireGroupeTexte(l))
+  }
+  return { type: 'group', description: g.description ?? '', lines }
+}
+
+// Resolveur de quantite pour assemblerEnfants : retrouve la quantite saisie par
+// Olivier pour la ligne produit courante du modele, via la ref d'occurrence
+// `origine:product.id#k`. Le compteur d'occurrence est tenu en cloture et suit
+// l'ordre de parcours de assemblerEnfants (meme ordre que la derivation), donc
+// les #0/#1 collent. Quantite absente/null -> ligne (et son sous-titre orphelin)
+// abandonnee par assemblerEnfants.
+function fabriquerResolveur(
+  origine: string,
+  articlesParRef: Map<string, ArticleDevis>,
+): (l: LigneModele) => number | null {
+  const compteur = new Map<string, number>()
+  return (l: LigneModele) => {
+    if (l.type !== 'product' || !l.product?.id) return null
+    const pid = l.product.id
+    const occ = compteur.get(pid) ?? 0
+    compteur.set(pid, occ + 1)
+    const a = articlesParRef.get(`${origine}:${pid}#${occ}`)
+    return a && typeof a.quantite === 'number' ? a.quantite : null
+  }
+}
+
+// Ligne produit pour un article AJOUTE par Olivier (sans ref modele) : prix/unite
+// de l'article, taux de TVA dominant du modele (poste absent du modele).
+function articleAjouteVersLigne(
+  a: ArticleDevis,
+  taxDominant?: string,
+): LignePayload {
+  const desc = a.description_technique?.trim()
+  const description =
+    desc && desc !== a.libelle
+      ? `<strong>${a.libelle}</strong><br><br>${desc}`
+      : `<strong>${a.libelle}</strong>`
+  return {
+    type: 'product',
+    product: a.costructor_article_id,
+    description,
+    quantity: a.quantite as number, // garanti > 0 par le caller
+    sellPrice: eurosVersCentimes(a.prix_vente),
+    unit: uniteVersCostructorId(a.unite),
+    ...(taxDominant ? { tax: taxDominant } : {}),
+  }
+}
+
+// Transforme une section editee en groupe Costructor : on reproduit le motif du
+// groupe-modele (via assemblerEnfants + resolveur par ref), puis on ajoute en
+// fin les articles qu'Olivier a ajoutes (sans ref). Titre = nom validé (rename).
+function sectionVersGroupe(
+  s: SectionDevis,
+  groupeModele: LigneModele,
+  origine: string,
+  taxDominant?: string,
+): LignePayload {
+  const parRef = new Map<string, ArticleDevis>()
+  for (const a of s.articles) if (a.ref_modele) parRef.set(a.ref_modele, a)
+  const lignesModele = assemblerEnfants(
+    groupeModele.lines ?? [],
+    fabriquerResolveur(origine, parRef),
+  )
+  const ajoutes = s.articles
+    .filter((a) => !a.ref_modele && typeof a.quantite === 'number' && a.quantite > 0)
+    .map((a) => articleAjouteVersLigne(a, taxDominant))
+  return { type: 'group', description: s.nom, lines: [...lignesModele, ...ajoutes] }
+}
+
+// Groupe a plat pour une section ajoutee de zero par Olivier (aucune ref modele).
+function sectionPlate(s: SectionDevis, taxDominant?: string): LignePayload {
+  const lines = s.articles
+    .filter((a) => typeof a.quantite === 'number' && a.quantite > 0)
+    .map((a) => articleAjouteVersLigne(a, taxDominant))
+  return { type: 'group', description: s.nom, lines }
+}
+
+// Coeur du commit 3 : reconstruit l'arbre du devis depuis le snapshot du modele
+// et les sections validees par Olivier. On parcourt le modele dans son ORDRE
+// (squelette texte + structure) et, a la position de chaque groupe porteur de
+// produits, on emet les sections d'Olivier de cette origine. Les sections
+// ajoutees de zero sont mises a la fin.
+export function reconstruireDepuisSnapshot(
+  snapshot: { lines?: unknown[] },
+  sectionsFinales: SectionDevis[],
+): LignePayload[] {
+  const modeleLines = (snapshot.lines ?? []) as LigneModele[]
+  const taxDominant = taxIdModalDuModele(modeleLines)
+  const out: LignePayload[] = []
+  const emisesOrigines = new Set<string>()
+
+  for (const ligne of ordonner(modeleLines)) {
+    if (ligne.type === 'text') {
+      // Squelette : ligne texte racine (en-tete qualifications...) telle quelle.
+      out.push({ type: 'text', description: ligne.description ?? '' })
+      continue
+    }
+    if (ligne.type === 'product') {
+      // Produit racine (rare) : squelette, on garde la quantite du modele.
+      if (ligne.product?.id) {
+        out.push({
+          type: 'product',
+          product: ligne.product.id,
+          description: ligne.description ?? '',
+          quantity: ligne.quantity ?? 1,
+          sellPrice: ligne.sellPrice ?? 0,
+          unit: ligne.unit?.id ?? uniteVersCostructorId(ligne.unit?.symbol ?? ''),
+          ...taxeLigne(ligne),
+        })
+      }
+      continue
+    }
+    // ligne.type === 'group'
+    if (!groupeAProduits(ligne)) {
+      // Groupe purement texte (qualifications, conditions) : squelette tel quel.
+      out.push(reproduireGroupeTexte(ligne))
+      continue
+    }
+    const classe = classifierGroupe(ligne)
+    if (emisesOrigines.has(classe)) continue // motif deja instancie (doublons)
+    emisesOrigines.add(classe)
+    const sectionsDeCetteOrigine = sectionsFinales.filter(
+      (s) => origineSection(s) === classe,
+    )
+    for (const s of sectionsDeCetteOrigine) {
+      out.push(sectionVersGroupe(s, ligne, classe, taxDominant))
+    }
+  }
+
+  // Sections ajoutees de zero par Olivier (aucune ref) : a la fin, a plat.
+  for (const s of sectionsFinales) {
+    if (origineSection(s) === null) {
+      const groupe = sectionPlate(s, taxDominant)
+      if (groupe.type === 'group' && groupe.lines.length > 0) out.push(groupe)
+    }
+  }
+
+  return out
+}
+
 // ---------- Push BROUILLON (écriture compte test UNIQUEMENT) ----------
+
+// Variante "brute" de pousserDevisGroupe pour le moteur de clonage pilote par la
+// route : NE compose PAS la description (la route l'a deja fait, lien rapport
+// inclus) et NE gere PAS l'idempotence (laissee a la route, par COLONNE
+// devis.costructor_devis_id, pas le bucket). Garde-fou : assertCompteJulien
+// refuse la cle d'Olivier. Renvoie le devis cree.
+export async function pousserLignesGroupe(payload: {
+  customer: string
+  description: string
+  lines: LignePayload[]
+  name?: string
+  preVisitAt?: string
+}): Promise<any> {
+  const key = assertCompteJulien()
+  const r = await fetch(`${BASE_URL}/quotes`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      customer: payload.customer,
+      description: payload.description,
+      lines: payload.lines,
+      ...(payload.name?.trim() ? { name: payload.name.trim() } : {}),
+      ...(payload.preVisitAt ? { preVisitAt: payload.preVisitAt } : {}),
+    }),
+  })
+  if (!r.ok) throw new Error(`POST /quotes (clonage) ${r.status} : ${await r.text()}`)
+  const j = (await r.json()) as { data?: any } & any
+  return j.data !== undefined ? j.data : j
+}
 
 export async function pousserDevisGroupe(payload: {
   customer: string

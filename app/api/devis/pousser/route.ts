@@ -15,9 +15,13 @@ import {
   supprimerDevis,
   trouverOuCreerContact,
 } from '@/lib/costructor'
+import {
+  pousserLignesGroupe,
+  reconstruireDepuisSnapshot,
+} from '@/lib/atg-devis-modele'
 import { composerDescriptionAvecRapport } from '@/lib/rapport-pdf'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { Chantier, Devis, SectionDevis } from '@/lib/types'
+import type { Chantier, Devis, ModeleSnapshot, SectionDevis } from '@/lib/types'
 
 export async function POST(request: Request) {
   try {
@@ -114,17 +118,40 @@ export async function POST(request: Request) {
       ? chantier.date_visite.slice(0, 10)
       : undefined
 
-    const payload = construirePayloadDevis({
-      contactId,
-      sections,
-      description,
-      tvaTaux,
-      name,
-      preVisitAt,
-    })
-
     try {
-      const resp = await pousserDevis(payload)
+      // Aiguillage du PUSH selon le moteur (commit 3, sous-etape A).
+      let resp
+      if (devis.moteur === 'clonage' && devis.modele_snapshot) {
+        // Moteur de clonage (ITE) : on reconstruit l'arbre FIDELE du modele
+        // depuis le snapshot fige, en reinjectant les quantites validees par
+        // Olivier (jointure sur ref_modele) et la TVA ligne par ligne du modele.
+        // Contact, description+lien rapport, idempotence par COLONNE (ci-dessus)
+        // et update DB sont mutualises avec le chemin plat ; le garde-fou compte
+        // test est dans pousserLignesGroupe. NB : forfaits fixes (eco /
+        // transversaux a quantite 1) pre-remplis en sous-etape B.
+        const lignesClonage = reconstruireDepuisSnapshot(
+          devis.modele_snapshot as ModeleSnapshot,
+          sections,
+        )
+        resp = await pousserLignesGroupe({
+          customer: contactId,
+          description,
+          lines: lignesClonage,
+          name,
+          preVisitAt,
+        })
+      } else {
+        // Moteur plat (ravalement + devis existants) : STRICTEMENT inchange.
+        const payload = construirePayloadDevis({
+          contactId,
+          sections,
+          description,
+          tvaTaux,
+          name,
+          preVisitAt,
+        })
+        resp = await pousserDevis(payload)
+      }
       const url = resp.url ?? `https://app.costructor.co/quotes/${resp.id}`
 
       const { error: errUp } = await supabase
