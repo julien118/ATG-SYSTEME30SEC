@@ -5,6 +5,7 @@ import LogoLink from '@/components/LogoLink'
 import BoutonPousser from './bouton-pousser'
 import BlocTotaux from './bloc-totaux'
 import { ATG_USER_ID } from '@/lib/atg'
+import { construireNomDevis } from '@/lib/costructor'
 import type { Chantier, Devis, SectionDevis } from '@/lib/types'
 
 // Force rendu dynamique sans cache (cohérent avec /devis).
@@ -76,6 +77,12 @@ export default async function RecapDevisPage({
     chantier.client_adresse ? `, ${chantier.client_adresse}` : ''
   }`
 
+  // Nom lisible du devis (le meme que celui pousse dans Costructor) : on l'affiche
+  // sur l'ecran de confirmation a la place de l'id technique quote_... (illisible).
+  // Le vrai numero D-2026-... n'existe QUE quand Olivier finalise le brouillon dans
+  // Costructor ; tant que c'est un brouillon, on ne peut donc pas l'afficher.
+  const nomDevis = construireNomDevis(chantier.objet_travaux, chantier.client_nom)
+
   return (
     <div className="min-h-screen-safe bg-background flex flex-col">
       <header className="sticky top-0 z-30 bg-[#1a1a1a] border-b border-white/10 px-5 py-4 pt-safe flex items-center gap-3">
@@ -107,10 +114,11 @@ export default async function RecapDevisPage({
               </svg>
             </div>
             <p className="text-base font-semibold text-foreground">
-              Devis créé dans Costructor
+              Brouillon créé dans Costructor
             </p>
-            <p className="text-xs text-gray-500 mt-1 mb-4">
-              N° brouillon : {devis.costructor_devis_id}
+            <p className="text-sm text-gray-600 mt-1">{nomDevis}</p>
+            <p className="text-xs text-gray-400 mt-1 mb-4">
+              À valider dans Costructor pour le finaliser
             </p>
             <a
               href={devis.costructor_devis_url ?? '#'}
