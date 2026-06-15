@@ -55,9 +55,32 @@ export function uniteVersCostructorId(unite: string): string {
   return UNIT_FORFAIT
 }
 
-// Strip HTML wrappers retournés par l'API (`<div>...</div>`).
+// Décode les entités HTML courantes. Costructor renvoie les libellés en HTML,
+// donc un « > » y arrive encodé en « &gt; » (idem &amp; &lt; &quot; &#39;...).
+// Sans ce décodage, le « &gt; » litteral s'affichait tel quel sur le récap et le
+// devis. L'entité &amp; est traitée en DERNIER pour ne pas sur-décoder une
+// séquence comme &amp;gt; (qui doit redonner &gt;, pas >). Couvre aussi les
+// entités numériques décimales (&#39;) et hexadécimales (&#x27;).
+function decoderEntitesHtml(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) =>
+      String.fromCodePoint(parseInt(hex, 16)),
+    )
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&amp;/g, '&')
+}
+
+// Nettoie un libellé renvoyé par l'API : retire les balises HTML (`<div>...</div>`)
+// PUIS décode les entités (&gt; -> >). L'ordre compte : on strippe les vraies
+// balises avant de décoder, pour ne pas réintroduire de « < » interprétable.
+// Source unique de nettoyage des libellés (plat, clonage ITE, autocomplétion).
 export function stripHtml(s: string): string {
-  return s.replace(/<[^>]+>/g, '').trim()
+  return decoderEntitesHtml(s.replace(/<[^>]+>/g, '')).trim()
 }
 
 // € → centimes (l'API attend des entiers).
