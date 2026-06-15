@@ -176,14 +176,29 @@ export interface PropositionDevisIA {
   sections: SectionDevis[]
 }
 
+// Une mesure dictee rattachee a un ou plusieurs articles du devis (etape 1
+// prefil metres). La distinction METIER (validee par Julien) est portee par
+// `portee` + `articles_cibles` :
+//   - portee 'mur'   = surface GLOBALE du mur (« facade sud 45 m² ») -> tous les
+//     postes surfaciques globaux de la section (echafaudage, lavage, traitement,
+//     isolant, systeme, finition...). `articles_cibles` les liste tous.
+//   - portee 'poste' = article explicitement NOMME avec sa propre mesure
+//     (« l'isolant fait 45 m² », « 6 ml d'appuis ») -> ce seul article.
+// `unite`/`portee`/`confiance` sont des chaines (issues de Claude) normalisees /
+// validees en code ; valeurs attendues commentees.
+export interface MesureDictee {
+  section: string
+  valeur: number
+  unite: string // attendu : "m²" | "ml" | "u"
+  portee: string // attendu : "mur" | "poste"
+  articles_cibles: string[] // libelles EXACTS recopies de la structure
+  confiance: string // attendu : "haute" | "basse"
+}
+
 export interface MetricsParseResult {
-  updates: Array<{
-    section_name: string
-    article_label: string
-    quantity: number
-    confidence: 'high' | 'medium' | 'low'
-  }>
-  ignored: string[]
+  mesures: MesureDictee[]
+  // Mesures dictees non rattachees de facon sure (trace, jamais appliquees).
+  ignores: string[]
 }
 
 // ---------- Types API Costructor (validés par l'audit) ----------
