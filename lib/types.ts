@@ -204,7 +204,13 @@ export interface MetricsParseResult {
 // ---------- Types API Costructor (validés par l'audit) ----------
 
 export type CostructorQuoteLine =
-  | { type: 'text'; description: string } // séparateur de section
+  | { type: 'text'; description: string } // séparateur / en-tete de tete
+  // Section = un GROUPE avec ses produits imbriques. Indispensable pour que le
+  // compte assujetti d'Olivier (configure pour les sous-totaux par groupe)
+  // AFFICHE le devis : une structure plate (produits a la racine) est creee par
+  // l'API mais plante au rendu. Meme forme que le moteur clonage et les devis
+  // natifs d'Olivier.
+  | { type: 'group'; description: string; lines: CostructorQuoteLine[] }
   | {
       type: 'product'
       product: string // ID produit (prod_xxx)
