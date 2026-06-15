@@ -423,6 +423,18 @@ function taxIdModalDuModele(lines: LigneModele[]): string | undefined {
   return best
 }
 
+// Une ligne texte est VIDE si, balises HTML retirees et entites d'espace decodees,
+// il ne reste aucun caractere visible. On ne reinjecte JAMAIS ces separateurs vides
+// du modele au push : un devis reel (model:false) ne sait pas les afficher et son
+// rendu casse chez Olivier (« erreur interne »), alors que le modele source
+// (model:true) les tolere. 0/28 devis affichables d'Olivier n'ont de ligne vide. On
+// ne touche PAS aux titres / sous-titres porteurs de texte (eux sont conserves).
+function estTexteVide(description: string | null | undefined): boolean {
+  const sansBalises = (description ?? '').replace(/<[^>]*>/g, '')
+  const sansEntitesEspace = sansBalises.replace(/&nbsp;|&#160;|&#xa0;/gi, ' ')
+  return sansEntitesEspace.replace(/\s/g, '').length === 0
+}
+
 // Assemble les enfants d'un groupe en appliquant un résolveur de quantité.
 // Une ligne produit dont la quantité résolue est nulle/≤0 est ABANDONNÉE, et
 // le titre texte qui la précède immédiatement l'est aussi (pas de titre
@@ -438,8 +450,12 @@ function assemblerEnfants(
   let titreCourant = ''
   for (const l of ordonner(enfants)) {
     if (l.type === 'text') {
-      textesEnAttente.push({ type: 'text', description: l.description ?? '' })
+      // On garde le titre courant (contexte du resolveur) a l'identique, mais on
+      // N'EMET PAS les separateurs texte vides du modele (rendu casse model:false).
       titreCourant = l.description ?? ''
+      if (!estTexteVide(l.description)) {
+        textesEnAttente.push({ type: 'text', description: l.description ?? '' })
+      }
     } else if (l.type === 'group') {
       out.push(...textesEnAttente)
       textesEnAttente = []
@@ -871,8 +887,10 @@ function groupeAProduits(g: LigneModele): boolean {
 function reproduireGroupeTexte(g: LigneModele): LignePayload {
   const lines: LignePayload[] = []
   for (const l of ordonner(g.lines)) {
-    if (l.type === 'text') lines.push({ type: 'text', description: l.description ?? '' })
-    else if (l.type === 'group') lines.push(reproduireGroupeTexte(l))
+    if (l.type === 'text') {
+      // Pas de separateur texte vide (rendu casse model:false chez Olivier).
+      if (!estTexteVide(l.description)) lines.push({ type: 'text', description: l.description ?? '' })
+    } else if (l.type === 'group') lines.push(reproduireGroupeTexte(l))
   }
   return { type: 'group', description: g.description ?? '', lines }
 }
@@ -965,8 +983,12 @@ export function reconstruireDepuisSnapshot(
 
   for (const ligne of ordonner(modeleLines)) {
     if (ligne.type === 'text') {
-      // Squelette : ligne texte racine (en-tete qualifications...) telle quelle.
-      out.push({ type: 'text', description: ligne.description ?? '' })
+      // Squelette : ligne texte racine (en-tete qualifications...). On SAUTE les
+      // lignes VIDES du modele (separateurs) : un devis model:false plante au rendu
+      // chez Olivier si elles sont presentes (c'etait la cause du bug ITE clone).
+      if (!estTexteVide(ligne.description)) {
+        out.push({ type: 'text', description: ligne.description ?? '' })
+      }
       continue
     }
     if (ligne.type === 'product') {
