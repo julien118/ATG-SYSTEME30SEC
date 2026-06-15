@@ -10,7 +10,7 @@
 
 import { anthropic } from './anthropic'
 import type {
-  ArticleBibliotheque,
+  ArticleRemplacable,
   PropositionDevisIA,
   SectionDevis,
 } from './types'
@@ -19,7 +19,7 @@ const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 
 function buildPrompt(
   transcriptions: string[],
-  bibliotheque: ArticleBibliotheque[],
+  bibliotheque: ArticleRemplacable[],
 ): string {
   const obsText = transcriptions
     .map((t, i) => `Observation ${i + 1} : ${t}`)
@@ -99,7 +99,7 @@ Réponds STRICTEMENT en JSON valide, sans markdown, sans texte avant ou après. 
 
 export async function proposerDevis(
   transcriptions: string[],
-  bibliotheque: ArticleBibliotheque[],
+  bibliotheque: ArticleRemplacable[],
 ): Promise<SectionDevis[]> {
   if (bibliotheque.length === 0) {
     throw new Error(

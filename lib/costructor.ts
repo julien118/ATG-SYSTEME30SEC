@@ -113,8 +113,8 @@ interface ProduitBrut {
   uses?: number | null
 }
 
-// Liste les articles de la bibliotheque Olivier nettoyes pour l'autocompletion
-// de remplacement (lot 4.3). LECTURE SEULE (GET /products). Pipeline :
+// Charge et nettoie la bibliotheque du compte courant. LECTURE SEULE
+// (GET /products). Pipeline :
 //   - ecarte les lignes de texte (type 'text', ce ne sont pas des articles) ;
 //   - garde ceux qui ont un prix unitaire (> 0) ET une unite (un poste de devis
 //     en a besoin) ;
@@ -123,7 +123,7 @@ interface ProduitBrut {
 //   - dedoublonne par nom normalise en gardant la variante la PLUS UTILISEE (uses
 //     le plus eleve) : ecarte les doublons du clone Olivier sur le compte test.
 // _limit eleve pour ne pas etre plafonne (cf piege meta-params underscore).
-export async function listerArticlesBibliotheque(): Promise<ArticleRemplacable[]> {
+async function chargerArticlesBibliotheque(): Promise<ArticleRemplacable[]> {
   const bruts = await costructorFetch<ProduitBrut[]>('/products?_limit=5000')
 
   const utilisables = bruts
@@ -149,6 +149,36 @@ export async function listerArticlesBibliotheque(): Promise<ArticleRemplacable[]
   return Array.from(parNom.values())
     .sort((a, b) => b.uses - a.uses)
     .map(({ uses: _uses, ...article }) => article)
+}
+
+// Cache memoire a TTL court de la bibliotheque (option B : le moteur plat lit la
+// bibliotheque EN DIRECT du compte cible a chaque proposition de devis). La cle
+// est la FIN de COSTRUCTOR_API_KEY pour ne JAMAIS melanger deux comptes dans un
+// meme process (test vs prod) : une instance reutilisee garde le bon catalogue.
+// TTL volontairement court : un changement de prix cote Olivier se propage en
+// quelques minutes, sans jamais revenir a une table figee. Invalidation par
+// expiration uniquement. Sur Vercel (Fluid Compute) les instances sont
+// reutilisees, donc les invocations chaudes evitent le GET /products.
+const BIBLIO_TTL_MS = 5 * 60 * 1000 // 5 minutes
+const cacheBiblio = new Map<
+  string,
+  { articles: ArticleRemplacable[]; expire: number }
+>()
+
+// Liste les articles de la bibliotheque du compte courant (lecture live + cache
+// TTL). Utilise par le moteur plat (proposition de devis) et l'autocompletion de
+// remplacement (lot 4.3). LECTURE SEULE. Signature inchangee pour les appelants.
+export async function listerArticlesBibliotheque(): Promise<ArticleRemplacable[]> {
+  // Cle par compte (fin de cle d'API) : un meme process ne sert jamais le
+  // catalogue d'un compte sous l'identite d'un autre.
+  const cle = (process.env.COSTRUCTOR_API_KEY ?? '').slice(-8) || 'sans-cle'
+  const maintenant = Date.now()
+  const enCache = cacheBiblio.get(cle)
+  if (enCache && enCache.expire > maintenant) return enCache.articles
+
+  const articles = await chargerArticlesBibliotheque()
+  cacheBiblio.set(cle, { articles, expire: maintenant + BIBLIO_TTL_MS })
+  return articles
 }
 
 // ---------- Contacts ----------

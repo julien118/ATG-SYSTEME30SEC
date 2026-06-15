@@ -8,6 +8,7 @@
 
 import { NextResponse } from 'next/server'
 import { proposerDevis } from '@/lib/quote-proposer'
+import { listerArticlesBibliotheque } from '@/lib/costructor'
 import { ATG_USER_ID } from '@/lib/atg'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { selectionnerModele, type ModeleDevis } from '@/lib/atg-routing'
@@ -19,7 +20,6 @@ import {
   listerModelesCible,
 } from '@/lib/atg-devis-modele'
 import type {
-  ArticleBibliotheque,
   CaptureItem,
   ModeleSnapshot,
   MoteurDevis,
@@ -178,16 +178,16 @@ export async function POST(request: Request) {
     if (clonage) {
       sections = clonage.sections
     } else {
-      // Moteur plat (INCHANGE) : bibliotheque seedee + IA.
-      const { data: biblio, error: errB } = await supabase
-        .from('bibliotheque_costructor')
-        .select('*')
-      if (errB) throw errB
-
-      const bibliotheque = (biblio as ArticleBibliotheque[]) ?? []
+      // Moteur plat (option B) : bibliotheque lue EN DIRECT du compte cible (la
+      // cle d'ecriture = le compte vers lequel on poussera), via /products. Prix
+      // et ids produits toujours a jour ; la bascule (clé d'ecriture = Olivier)
+      // suffit a faire sortir les bons prix d'Olivier. On lit deliberement via la
+      // cle d'ecriture et NON la cle GET d'Olivier : les product.id doivent venir
+      // du meme compte que le push, sinon ils sont invalides a l'ecriture.
+      const bibliotheque = await listerArticlesBibliotheque()
       if (bibliotheque.length === 0) {
         return NextResponse.json(
-          { error: 'Bibliothèque Costructor vide en DB' },
+          { error: 'Bibliothèque Costructor vide (lecture /products)' },
           { status: 500 },
         )
       }
