@@ -24,7 +24,7 @@
 // Le croisement "les devis de tel client" n'est PAS traite ici : il est deja
 // couvert par le domaine devis (intention liste_client). Domaines separes et nets.
 
-import { anthropic } from '../anthropic'
+import { anthropic, MODELE_CLAUDE } from '../anthropic'
 import { listerContacts, parseAdresseFr } from '../costructor'
 import { createAdminClient } from '../supabase/admin'
 import { ATG_USER_ID } from '../atg'
@@ -38,7 +38,6 @@ import {
 import { blocHistoriquePourAnalyse, type MessageHistorique } from './historique'
 import type { CostructorContact } from '../types'
 
-const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 // Plafond du nombre de contacts resumes envoyes au redacteur (bornage).
 const LIMITE_LISTE = 15
 

@@ -6,10 +6,8 @@
 // endroit. La chaine anti-hallucination (analyse -> code calcule -> redaction)
 // reste propre a chaque domaine.
 
-import { anthropic } from '../anthropic'
+import { anthropic, MODELE_CLAUDE } from '../anthropic'
 import { blocHistoriquePourAiguillage, type MessageHistorique } from './historique'
-
-const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 
 export type DomaineAssistant = 'devis' | 'comptes_rendus' | 'clients' | 'recap_client' | 'inconnu'
 
@@ -85,7 +83,8 @@ export async function aiguiller(
     if (domaine === 'inconnu') return 'inconnu'
     if (domaine && DOMAINES_BRANCHES.has(domaine)) return domaine
     return 'devis'
-  } catch {
+  } catch (e) {
+    console.error('[assistant/aiguilleur]', e)
     return 'devis'
   }
 }

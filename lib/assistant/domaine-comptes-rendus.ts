@@ -19,7 +19,7 @@
 //     vigilance), plafonne, jamais le texte integral de tous les rapports ;
 //   - plusieurs CR pour un meme nom -> resume borne + invitation a preciser.
 
-import { anthropic } from '../anthropic'
+import { anthropic, MODELE_CLAUDE } from '../anthropic'
 import { createAdminClient } from '../supabase/admin'
 import { redigerDepuisFaits } from './rediger'
 import {
@@ -31,7 +31,6 @@ import {
 import { blocHistoriquePourAnalyse, type MessageHistorique } from './historique'
 import type { RapportContenu } from '../types'
 
-const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 // Plafond du nombre de comptes rendus resumes envoyes au redacteur (bornage de
 // volumetrie). Au-dela, on signale la troncature.
 const LIMITE_LISTE = 15

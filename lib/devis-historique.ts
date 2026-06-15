@@ -16,13 +16,12 @@
 // Bascule production : on ne branchera sur les vrais devis d'Olivier qu'a la
 // prod. Ici, lecture seule stricte sur le compte test (COSTRUCTOR_API_KEY).
 
-import { anthropic } from './anthropic'
+import { anthropic, MODELE_CLAUDE } from './anthropic'
 import { correspondNomSouple, faitReferenceClientPrecedent } from './assistant/matching-nom'
 import { blocHistoriquePourAnalyse, type MessageHistorique } from './assistant/historique'
 
 const BASE_URL =
   process.env.COSTRUCTOR_API_BASE_URL || 'https://api.costructor.co/external/v1'
-const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 
 // ---------- Types ----------
 

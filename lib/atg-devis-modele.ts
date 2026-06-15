@@ -14,7 +14,7 @@
 // d'Olivier. Le compte d'Olivier n'est consulté qu'en lecture seule
 // (`getDevisOlivierLectureSeule`), jamais écrit.
 
-import { anthropic } from './anthropic'
+import { anthropic, MODELE_CLAUDE } from './anthropic'
 import {
   eurosVersCentimes,
   stripHtml,
@@ -313,8 +313,6 @@ const MESURE_FACADE: Partial<Record<RoleProduit, keyof MetresFacade>> = {
 const ROLES_FORFAIT_FIXE = new Set<RoleProduit>(['eco', 'deplacement', 'dechets'])
 
 // ---------- Extraction des métrés depuis la dictée (Claude) ----------
-
-const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 
 function buildPromptMetres(dictee: string): string {
   return `Tu extrais les MÉTRÉS d'une dictée de chantier de façade (ravalement OU isolation thermique par l'extérieur), dictée par le pro sur le terrain. Tu ne rédiges rien, tu ne devines aucune quantité non dite : tu structures uniquement ce qui est énoncé.

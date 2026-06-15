@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { anthropic } from '@/lib/anthropic'
+import { anthropic, MODELE_CLAUDE } from '@/lib/anthropic'
 import { SYSTEM_PROMPT, buildUserPrompt } from '@/lib/prompts'
 import { ATG_USER_ID } from '@/lib/atg'
 import { persistRapportPdf } from '@/lib/rapport-pdf'
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
 
   // Call Claude
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: MODELE_CLAUDE,
     max_tokens: 4096,
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: userPrompt }],
@@ -146,7 +146,10 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ rapport: rapportNettoye, pdf_url: pdfUrl })
-  } catch {
+  } catch (e) {
+    // Sans ce log, l'erreur etait avalee : invisible dans les Runtime Logs Vercel
+    // (c'est ce qui a complique le diagnostic de la retraite du modele Claude).
+    console.error('[api/generate-report]', e)
     return NextResponse.json({ error: 'Report generation failed' }, { status: 500 })
   }
 }

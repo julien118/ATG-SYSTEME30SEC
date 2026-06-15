@@ -8,14 +8,12 @@
 //     de la zone (le différenciateur "dossier d'appel d'offres")
 // =============================================================
 
-import { anthropic } from './anthropic'
+import { anthropic, MODELE_CLAUDE } from './anthropic'
 import type {
   ArticleRemplacable,
   PropositionDevisIA,
   SectionDevis,
 } from './types'
-
-const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 
 function buildPrompt(
   transcriptions: string[],

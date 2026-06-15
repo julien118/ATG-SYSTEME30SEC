@@ -9,9 +9,7 @@
 // (lib/devis-historique.ts), inchange. Ce redacteur sert aux domaines ajoutes
 // a partir de l'etape A+B (comptes rendus, puis clients...).
 
-import { anthropic } from '../anthropic'
-
-const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
+import { anthropic, MODELE_CLAUDE } from '../anthropic'
 
 // Redige a partir des FAITS. `sujet` rappelle au modele la nature des donnees
 // (ex : "comptes rendus de visite") ; `faits` est l'objet borne construit par le

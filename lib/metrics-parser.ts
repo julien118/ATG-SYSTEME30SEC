@@ -2,10 +2,8 @@
 // Metrics Parser — extrait les métrés d'une dictée vocale
 // =============================================================
 
-import { anthropic } from './anthropic'
+import { anthropic, MODELE_CLAUDE } from './anthropic'
 import type { MetricsParseResult, SectionDevis } from './types'
-
-const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 
 function buildPrompt(transcription: string, sections: SectionDevis[]): string {
   const ctx = JSON.stringify(

@@ -15,7 +15,7 @@
 // (rapports/chantiers). Aucune ecriture. Anti-hallucination : le redacteur ne
 // cite QUE les FAITS pre-calcules par le code.
 
-import { anthropic } from '../anthropic'
+import { anthropic, MODELE_CLAUDE } from '../anthropic'
 import {
   analyserQuestionClients,
   trouverFichesClient,
@@ -30,7 +30,6 @@ import { devisPourClient } from '../devis-historique'
 import { faitReferenceClientPrecedent } from './matching-nom'
 import type { MessageHistorique } from './historique'
 
-const MODELE_CLAUDE = 'claude-sonnet-4-20250514'
 // Bornage par section : on ne deverse jamais tout au modele.
 const MAX_CR = 5
 const MAX_DEVIS = 10

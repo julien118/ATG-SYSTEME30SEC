@@ -17,10 +17,10 @@
 //     Fail-open : toute erreur/timeout retombe aussi sur le brut.
 
 import Groq from 'groq-sdk'
-import { anthropic } from './anthropic'
+import { anthropic, MODELE_CLAUDE } from './anthropic'
 
 const MODELE_WHISPER = 'whisper-large-v3-turbo'
-const MODELE_REPONCTUATION = 'claude-sonnet-4-20250514'
+const MODELE_REPONCTUATION = MODELE_CLAUDE
 // Timeouts dimensionnes pour absorber un enregistrement long (jusqu'a ~5 min,
 // le garde-fou de duree cote AudioRecorder) : Whisper turbo reste rapide mais on
 // laisse une marge confortable pour l'upload + la transcription, et la
@@ -144,7 +144,8 @@ export async function reponctuer(texteBrut: string): Promise<string> {
     const sortie =
       reponse.content[0]?.type === 'text' ? reponse.content[0].text : ''
     return gardeFouFidelite(brut, sortie).texte
-  } catch {
+  } catch (e) {
+    console.error('[transcription] reponctuation:', e)
     return texteBrut ?? ''
   }
 }
