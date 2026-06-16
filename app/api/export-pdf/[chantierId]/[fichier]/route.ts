@@ -57,6 +57,8 @@ export async function GET(
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="${filename}"`,
+        // PII client : empêcher toute mise en cache par un proxy/CDN intermédiaire.
+        'Cache-Control': 'private, no-store',
       },
     })
   } catch {

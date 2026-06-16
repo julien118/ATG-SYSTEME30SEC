@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import LogoLink from '@/components/LogoLink'
+import LogoutButton from '@/components/LogoutButton'
 import ChantiersList from './chantiers-list'
 import { ATG_USER_ID, ATG_PROFIL } from '@/lib/atg'
 import { deriverStatutAffiche } from '@/lib/statut-affaire'
@@ -58,26 +59,27 @@ export default async function ChantiersPage() {
       {/* Header */}
       <header className="sticky top-0 z-30 bg-[#1a1a1a] border-b border-white/10 px-5 py-4 pt-safe flex items-center justify-between">
         <LogoLink width={110} height={26} />
-        <div className="text-sm text-gray-200">
-          {safeProfile.prenom} {safeProfile.nom}
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-200">
+            {safeProfile.prenom} {safeProfile.nom}
+          </span>
+          <LogoutButton />
         </div>
       </header>
 
       {/* Content */}
       <main className="px-5 py-4 max-w-2xl mx-auto page-enter">
-        <p className="mb-5 text-sm text-gray-500">
-          Du chantier au devis, sans rien retaper.
-        </p>
         <ChantiersList
           chantiers={chantiers}
           profile={safeProfile}
         />
       </main>
 
-      {/* Footer */}
-      <footer className="px-5 pb-6 max-w-2xl mx-auto">
-        <p className="text-xs text-gray-400 text-center">
-          Propulsé par{' '}
+      {/* Footer — signature produit : nom (un cran plus visible) + attribution IONNYX */}
+      <footer className="px-5 pb-6 max-w-2xl mx-auto text-center">
+        <p className="text-sm font-medium text-gray-500">Système 30 Secondes</p>
+        <p className="mt-0.5 text-xs text-gray-400">
+          par{' '}
           <a
             href="https://ionnyx.fr"
             target="_blank"

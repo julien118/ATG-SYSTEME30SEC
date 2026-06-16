@@ -1,9 +1,57 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { verifySession, signSession, COOKIE_NAME, SESSION_DUREE_MS } from '@/lib/auth-gate'
 
-// Middleware passthrough (mode démo ATG, pas d'auth).
-// Conservé en place pour ne pas casser le matcher d'exclusion des assets.
-export function middleware(_request: NextRequest) {
-  return NextResponse.next()
+// Routes accessibles SANS connexion :
+//  - /login + /api/auth/* : nécessaires pour se connecter
+//  - /r/* + /api/export-pdf/* : le lien du compte-rendu PDF partagé aux
+//    CLIENTS d'Olivier depuis le devis Costructor (ils n'ont pas de compte)
+// (les assets statiques sont déjà exclus par le `matcher` ci-dessous)
+function estPublique(pathname: string): boolean {
+  return (
+    pathname === '/login' ||
+    pathname.startsWith('/api/auth/') ||
+    pathname.startsWith('/r/') ||
+    pathname.startsWith('/api/export-pdf/')
+  )
+}
+
+// Porte d'accès single-user : tout est protégé sauf l'allowlist publique.
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  if (estPublique(pathname)) return NextResponse.next()
+
+  const connecte = await verifySession(request.cookies.get(COOKIE_NAME)?.value)
+  if (connecte) {
+    // Session glissante : on reprolonge le cookie à CHAQUE visite. Tant qu'Olivier
+    // utilise l'app, sa session ne vieillit jamais → il n'est jamais déconnecté
+    // tout seul. (Seul un changement d'email/mot de passe met fin aux sessions.)
+    const res = NextResponse.next()
+    try {
+      res.cookies.set(COOKIE_NAME, await signSession(), {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: Math.floor(SESSION_DUREE_MS / 1000),
+      })
+    } catch {
+      // Si la re-signature échoue, on laisse passer sans prolonger : on ne bloque
+      // jamais l'accès d'un utilisateur déjà authentifié pour un souci de confort.
+    }
+    return res
+  }
+
+  // Non connecté : les API répondent 401 (pas de redirection), les pages
+  // renvoient vers /login en mémorisant la destination.
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: 'non_authentifie' }, { status: 401 })
+  }
+  const url = request.nextUrl.clone()
+  const destination = pathname + request.nextUrl.search
+  url.pathname = '/login'
+  url.search = ''
+  url.searchParams.set('next', destination)
+  return NextResponse.redirect(url)
 }
 
 export const config = {

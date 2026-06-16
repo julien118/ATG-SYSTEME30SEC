@@ -1,18 +1,18 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import ToastProvider from '@/components/ToastProvider'
-import AssistantDevis from '@/components/AssistantDevis'
+import AssistantGate from '@/components/AssistantGate'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'ATG — Système 30 Secondes',
-  description: 'Du chantier au devis, sans rien retaper. Visite chantier, dictée vocale, photos, compte rendu et devis Costructor générés automatiquement.',
+  description: 'Système 30 Secondes par IONNYX',
   manifest: '/manifest.json',
   openGraph: {
     title: 'ATG — Système 30 Secondes',
-    description: 'Du chantier au devis, sans rien retaper.',
+    description: 'Système 30 Secondes par IONNYX',
     siteName: 'ATG',
     locale: 'fr_FR',
     type: 'website',
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'ATG — Système 30 Secondes',
-    description: 'Du chantier au devis, sans rien retaper.',
+    description: 'Système 30 Secondes par IONNYX',
   },
   icons: {
     icon: [
@@ -55,8 +55,9 @@ export default function RootLayout({
         <div className="flex-1 min-h-0 overflow-y-auto">
           <ToastProvider>{children}</ToastProvider>
         </div>
-        {/* Assistant de consultation des devis (lecture seule), flottant global. */}
-        <AssistantDevis />
+        {/* Assistant de consultation des devis (lecture seule), flottant global.
+            Masqué sur /login via AssistantGate. */}
+        <AssistantGate />
       </body>
     </html>
   )

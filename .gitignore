@@ -41,3 +41,4 @@ data/
 # livrables contenant la donnée commerciale d'Olivier (structure catalogue, modèles, SIRET) — jamais poussés
 DECOUVERTE-COMPTE-OLIVIER.md
 REPLICATION-LOG.md
+.gstack/
