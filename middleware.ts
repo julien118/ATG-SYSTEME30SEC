@@ -1,5 +1,7 @@
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { verifySession, signSession, COOKIE_NAME, SESSION_DUREE_MS } from '@/lib/auth-gate'
+import { cibleInterneSure } from '@/lib/redirection-sure'
 
 // Routes accessibles SANS connexion :
 //  - /login + /api/auth/* : nécessaires pour se connecter
@@ -26,19 +28,55 @@ function estPublique(pathname: string): boolean {
   )
 }
 
-// Porte d'accès single-user : tout est protégé sauf l'allowlist publique.
+// Porte d'accès single-user. DEUX couches volontairement superposées :
+//  1. Session Supabase Auth (rafraîchie ici) : c'est elle qui protège les
+//     DONNÉES via la RLS (le navigateur parle directement à Supabase). Sans
+//     session, la RLS ne renvoie rien — la clé anon publique devient inerte.
+//  2. Cookie de session maison (HMAC) : autorité pour l'accès aux PAGES pendant
+//     la transition. Pourra être retiré une fois la session Supabase éprouvée.
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
-  if (estPublique(pathname)) return NextResponse.next()
 
+  // --- 1) Rafraîchir la session Supabase (rotation des tokens) ---
+  // Patron officiel @supabase/ssr : ne RIEN exécuter entre createServerClient et
+  // getUser(). On accumule les cookies mis à jour sur `response`. Best-effort :
+  // tout échec est avalé pour ne JAMAIS bloquer la porte d'accès.
+  let response = NextResponse.next({ request })
+  try {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll()
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+            response = NextResponse.next({ request })
+            cookiesToSet.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options),
+            )
+          },
+        },
+      },
+    )
+    await supabase.auth.getUser()
+  } catch {
+    // Un souci de rafraîchissement de session ne doit jamais verrouiller l'app.
+  }
+
+  // --- 2) Routes publiques : laisser passer (cookies de session à jour) ---
+  if (estPublique(pathname)) return response
+
+  // --- 3) Porte d'accès maison (autorité pour les PAGES) ---
   const connecte = await verifySession(request.cookies.get(COOKIE_NAME)?.value)
   if (connecte) {
     // Session glissante : on reprolonge le cookie à CHAQUE visite. Tant qu'Olivier
     // utilise l'app, sa session ne vieillit jamais → il n'est jamais déconnecté
     // tout seul. (Seul un changement d'email/mot de passe met fin aux sessions.)
-    const res = NextResponse.next()
     try {
-      res.cookies.set(COOKIE_NAME, await signSession(), {
+      response.cookies.set(COOKIE_NAME, await signSession(), {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
@@ -49,20 +87,22 @@ export async function middleware(request: NextRequest) {
       // Si la re-signature échoue, on laisse passer sans prolonger : on ne bloque
       // jamais l'accès d'un utilisateur déjà authentifié pour un souci de confort.
     }
-    return res
+    return response
   }
 
-  // Non connecté : les API répondent 401 (pas de redirection), les pages
-  // renvoient vers /login en mémorisant la destination.
+  // --- 4) Non connecté : API → 401, pages → /login (cookies de session recopiés) ---
   if (pathname.startsWith('/api/')) {
-    return NextResponse.json({ error: 'non_authentifie' }, { status: 401 })
+    const r = NextResponse.json({ error: 'non_authentifie' }, { status: 401 })
+    response.cookies.getAll().forEach((c) => r.cookies.set(c))
+    return r
   }
   const url = request.nextUrl.clone()
-  const destination = pathname + request.nextUrl.search
   url.pathname = '/login'
   url.search = ''
-  url.searchParams.set('next', destination)
-  return NextResponse.redirect(url)
+  url.searchParams.set('next', cibleInterneSure(pathname + request.nextUrl.search))
+  const redirect = NextResponse.redirect(url)
+  response.cookies.getAll().forEach((c) => redirect.cookies.set(c))
+  return redirect
 }
 
 export const config = {

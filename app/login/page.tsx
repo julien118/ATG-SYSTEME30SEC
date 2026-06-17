@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import { cibleInterneSure } from '@/lib/redirection-sure'
+import { createClient } from '@/lib/supabase/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,6 +35,20 @@ export default function LoginPage() {
         body: JSON.stringify({ email, motDePasse }),
       })
       if (res.ok) {
+        // Session Supabase Auth : c'est elle qui protège les DONNÉES via la RLS
+        // (le navigateur parle directement à Supabase). Best-effort pendant la
+        // transition : si l'utilisateur Auth n'existe pas encore, on ne bloque
+        // pas l'accès — la porte maison (cookie HMAC) suffit aux pages.
+        try {
+          const supabase = createClient()
+          const { error } = await supabase.auth.signInWithPassword({
+            email: email.trim().toLowerCase(),
+            password: motDePasse,
+          })
+          if (error) console.error('[auth] session Supabase non établie :', error.message)
+        } catch {
+          console.error('[auth] session Supabase indisponible')
+        }
         window.location.assign(cibleApresConnexion())
         return
       }
