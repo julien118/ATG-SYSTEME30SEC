@@ -47,6 +47,17 @@ function formatEUR(n: number): string {
   }).format(n)
 }
 
+// Étapes affichées pendant la reconstruction sur un autre modèle (loader). Ça
+// reflète le vrai travail : on relit le modèle, on analyse la visite, on construit
+// puis on personnalise les descriptions depuis le rapport.
+const ETAPES_MODELE = [
+  'Lecture de votre modèle de devis…',
+  'Analyse de votre visite…',
+  'Construction de la proposition…',
+  'Personnalisation des descriptions…',
+  'Finalisation…',
+]
+
 export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, phaseInitiale, modeleIdInitial }: Props) {
   const router = useRouter()
   const toast = useToast()
@@ -58,6 +69,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
   const [modelesDispo, setModelesDispo] = useState<Array<{ id: string; libelle: string }>>([])
   const [modeleCourant, setModeleCourant] = useState<string | null>(modeleIdInitial ?? null)
   const [switchModeleEnCours, setSwitchModeleEnCours] = useState(false)
+  const [etapeSwitch, setEtapeSwitch] = useState(0)
   const [confirmSwitchId, setConfirmSwitchId] = useState<string | null>(null)
   const [etat, setEtat] = useState<EtatMicro>('pret')
   const [duree, setDuree] = useState(0)
@@ -163,6 +175,12 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
     if (switchModeleEnCours || id === modeleCourant) return
     setConfirmSwitchId(null)
     setSwitchModeleEnCours(true)
+    setEtapeSwitch(0)
+    // Fait avancer le loader à étapes pendant l'appel (purement visuel).
+    const it = setInterval(
+      () => setEtapeSwitch((e) => Math.min(e + 1, ETAPES_MODELE.length - 1)),
+      1200,
+    )
     annulerAutoSave()
     try {
       const res = await fetch('/api/devis/proposer', {
@@ -184,6 +202,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
     } catch (e) {
       toast.show((e as Error).message, 'error')
     } finally {
+      clearInterval(it)
       setSwitchModeleEnCours(false)
     }
   }
@@ -877,6 +896,19 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
               </div>
             )}
           </div>
+
+          {/* Loader pendant la reconstruction sur un autre modèle (overlay à étapes). */}
+          {switchModeleEnCours && (
+            <div className="fixed inset-0 z-50 bg-white/85 backdrop-blur-sm flex items-center justify-center px-6">
+              <div className="text-center max-w-xs">
+                <div className="mx-auto mb-4 h-10 w-10 rounded-full border-4 border-primary/25 border-t-primary animate-spin" />
+                <p className="text-sm font-semibold text-foreground">{ETAPES_MODELE[etapeSwitch]}</p>
+                <p className="mt-1.5 text-xs text-gray-500">
+                  On construit le devis sur le modèle choisi, en gardant vos observations de la visite.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Confirmation avant de reconstruire sur un autre modèle (si modifs en cours). */}
           {confirmSwitchId && (
