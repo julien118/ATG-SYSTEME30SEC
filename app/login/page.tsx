@@ -2,25 +2,16 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
+import { cibleInterneSure } from '@/lib/redirection-sure'
 
 export const dynamic = 'force-dynamic'
 
 // Cible de redirection apres connexion : lue cote client au submit (evite la
-// contrainte Suspense de useSearchParams), et sanitisee pour eviter tout
-// open-redirect.
+// contrainte Suspense de useSearchParams), et sanitisee (helper partage avec le
+// middleware) pour eviter tout open-redirect.
 function cibleApresConnexion(): string {
   if (typeof window === 'undefined') return '/chantiers'
-  let next = new URLSearchParams(window.location.search).get('next') || ''
-  try {
-    next = decodeURIComponent(next)
-  } catch {
-    return '/chantiers'
-  }
-  // Chemin interne strict : un seul « / » au debut, 2e caractere ni « / » ni
-  // « \ », et aucun espace ni backslash ensuite (\s couvre espace, tab, saut de
-  // ligne, CR). Rejette //evil.com, /\evil.com, schemas et injections d'en-tete.
-  if (/^\/(?![/\\])[^\s\\]*$/.test(next)) return next
-  return '/chantiers'
+  return cibleInterneSure(new URLSearchParams(window.location.search).get('next'))
 }
 
 export default function LoginPage() {

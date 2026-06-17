@@ -7,6 +7,12 @@ const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
+  // L'app A BESOIN de la caméra et du micro (photo + observation vocale) : on les
+  // AUTORISE en same-origin et on refuse tout le reste qu'on n'utilise pas.
+  {
+    key: 'Permissions-Policy',
+    value: 'camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), browsing-topics=()',
+  },
 ]
 
 /** @type {import('next').NextConfig} */

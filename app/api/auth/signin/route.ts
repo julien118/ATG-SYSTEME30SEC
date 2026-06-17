@@ -36,7 +36,11 @@ export async function POST(request: Request) {
   const now = Date.now()
   const rec = tentatives.get(ip)
   if (rec && now - rec.premier < FENETRE_MS && rec.n >= MAX_ECHECS) {
-    return NextResponse.json({ error: 'trop_de_tentatives' }, { status: 429 })
+    const resteSec = Math.ceil((FENETRE_MS - (now - rec.premier)) / 1000)
+    return NextResponse.json(
+      { error: 'trop_de_tentatives' },
+      { status: 429, headers: { 'Retry-After': String(resteSec) } }
+    )
   }
 
   let email = ''
