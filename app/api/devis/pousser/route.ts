@@ -26,12 +26,15 @@ import type { Chantier, Devis, ModeleSnapshot, SectionDevis } from '@/lib/types'
 
 export async function POST(request: Request) {
   try {
-    const { devisId, mode } = (await request.json().catch(() => ({}))) as {
+    const { devisId, mode, nom } = (await request.json().catch(() => ({}))) as {
       devisId?: string
       // 'remplacer' (defaut) : comportement actuel (supprime l'ancien devis
       // Costructor avant de recreer). 'copie' (point 13) : on NE supprime PAS
       // l'ancien, on cree le nouveau a cote (Olivier garde l'ancienne version).
       mode?: 'remplacer' | 'copie'
+      // Nom du brouillon choisi par l'utilisateur sur l'ecran recap. Optionnel :
+      // s'il est vide/absent, on retombe sur le nom auto (objet des travaux).
+      nom?: string
     }
     if (!devisId) {
       return NextResponse.json({ error: 'devisId manquant' }, { status: 400 })
@@ -112,8 +115,10 @@ export async function POST(request: Request) {
       chantier.id,
     )
 
-    // Lot 6.1 : nom parlant depuis l'objet des travaux dicte.
-    const name = construireNomDevis(chantier.objet_travaux, chantier.client_nom)
+    // Nom du brouillon : si l'utilisateur a saisi un nom sur l'ecran recap, il
+    // fait foi ; sinon repli sur le nom auto (objet des travaux dicte, lot 6.1).
+    const nomAuto = construireNomDevis(chantier.objet_travaux, chantier.client_nom)
+    const name = (nom ?? '').trim() || nomAuto
     // Lot 6.2 : visite prealable = date de la visite technique, tronquee au jour.
     const preVisitAt = chantier.date_visite
       ? chantier.date_visite.slice(0, 10)

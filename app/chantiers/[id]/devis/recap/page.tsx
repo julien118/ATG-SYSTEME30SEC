@@ -248,6 +248,7 @@ export default async function RecapDevisPage({
             <BoutonPousser
               devisId={devis.id}
               chantierId={params.id}
+              nomParDefaut={nomDevis}
               dejaEnvoye={!!devis.costructor_devis_id}
             />
           </div>

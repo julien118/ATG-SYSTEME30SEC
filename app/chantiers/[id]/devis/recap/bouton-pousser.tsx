@@ -16,17 +16,22 @@ const ETAPES = [
 interface Props {
   devisId: string
   chantierId: string
+  // Nom du brouillon pré-rempli (objet des travaux), éditable par l'utilisateur
+  // avant l'envoi vers Costructor.
+  nomParDefaut: string
   // Le devis a deja ete pousse au moins une fois (costructor_devis_id present) :
   // on demande alors confirmation avant de le renvoyer (remplacement de l'ancien).
   dejaEnvoye?: boolean
 }
 
-export default function BoutonPousser({ devisId, chantierId: _chantierId, dejaEnvoye }: Props) {
+export default function BoutonPousser({ devisId, chantierId: _chantierId, nomParDefaut, dejaEnvoye }: Props) {
   const router = useRouter()
   const toast = useToast()
   const [enCours, setEnCours] = useState(false)
   const [etape, setEtape] = useState(0)
   const [confirmOuvert, setConfirmOuvert] = useState(false)
+  // Nom du brouillon Costructor : pré-rempli, modifiable avant l'envoi.
+  const [nom, setNom] = useState(nomParDefaut)
 
   // mode : 'remplacer' (defaut, supprime l'ancien devis Costructor) ou 'copie'
   // (cree un nouveau devis sans toucher a l'ancien). La route applique le mode ;
@@ -45,7 +50,7 @@ export default function BoutonPousser({ devisId, chantierId: _chantierId, dejaEn
       const res = await fetch('/api/devis/pousser', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ devisId, mode }),
+        body: JSON.stringify({ devisId, mode, nom: nom.trim() }),
       })
       clearInterval(it)
       const data = await res.json()
@@ -89,6 +94,22 @@ export default function BoutonPousser({ devisId, chantierId: _chantierId, dejaEn
 
   return (
     <>
+      <div className="mb-3 text-left">
+        <label htmlFor="nom-brouillon" className="block text-sm font-medium text-foreground mb-1.5">
+          Nom du brouillon Costructor
+        </label>
+        <input
+          id="nom-brouillon"
+          type="text"
+          value={nom}
+          onChange={(e) => setNom(e.target.value)}
+          className="input-ionnyx w-full"
+          placeholder="Nom du devis"
+        />
+        <p className="mt-1 text-xs text-gray-400">
+          Modifiable avant l&apos;envoi. Laissé vide, le nom par défaut est utilisé.
+        </p>
+      </div>
       <button
         onClick={demarrer}
         className="btn-primary w-full text-base py-3.5 flex items-center justify-center gap-2"
