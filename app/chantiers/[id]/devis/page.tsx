@@ -72,7 +72,11 @@ export default async function DevisPage({
     devis.sections_finales ?? devis.sections_proposees ?? []
 
   return (
-    <div className="min-h-screen-safe bg-background flex flex-col">
+    // App-shell mobile : hauteur DEFINIE (h-full = la hauteur du conteneur de layout)
+    // + colonne flex => seul le <main> interne defile (un unique conteneur scrollable,
+    // footer epingle en flux). Meme patron que l'ecran visite (eprouve). Evite le double
+    // scroll (layout + page) qui figeait la liste sur iOS et faisait rebondir tout le body.
+    <div className="h-full bg-background flex flex-col">
       <header className="flex-shrink-0 sticky top-0 z-30 bg-header border-b border-white/10 px-5 py-4 pt-safe flex items-center gap-3">
         <Link href={`/chantiers/${params.id}/rapport`} className="flex h-10 w-10 -ml-2 items-center justify-center rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

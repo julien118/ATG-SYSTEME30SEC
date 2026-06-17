@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ToastProvider'
 import Spinner from '@/components/Spinner'
 import { decoderEntitesHtml } from '@/lib/html-entites'
+import { fetchWithTimeout } from '@/lib/utils'
 import type { ArticleDevis, ArticleRemplacable, SectionDevis } from '@/lib/types'
 
 // Normalisation pour la recherche d'article : minuscules, accents retires.
@@ -183,11 +184,13 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
     )
     annulerAutoSave()
     try {
-      const res = await fetch('/api/devis/proposer', {
+      // Timeout : sans lui, une connexion mobile qui pend laisserait le `finally`
+      // jamais atteint => overlay `.fixed.inset-0` bloque indefiniment (gel total).
+      const res = await fetchWithTimeout('/api/devis/proposer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chantierId, modeleId: id }),
-      })
+      }, 60000)
       const data = await res.json()
       if (!res.ok || !Array.isArray(data.sections)) {
         throw new Error(data.error ?? 'Changement de modèle impossible')
@@ -852,7 +855,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
     const totalArticles = sections.reduce((acc, s) => acc + s.articles.length, 0)
     return (
       <>
-        <main className="flex-1 overflow-y-auto px-5 py-4 pb-32 max-w-2xl mx-auto w-full">
+        <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4 pb-6 max-w-2xl mx-auto w-full">
           <div className="mb-5 rounded-2xl bg-primary/5 border border-primary p-4">
             <p className="text-sm font-semibold text-foreground mb-1">
               Proposition technique
@@ -1236,8 +1239,10 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
           </div>
         )}
 
-        {/* Sticky CTA Phase A → B */}
-        <div className="fixed bottom-0 inset-x-0 z-40 px-5 py-4 pb-safe bg-white border-t border-border">
+        {/* CTA Phase A → B : barre d'action EN FLUX (flex-shrink-0), pas position:fixed.
+            Epinglee en bas de la colonne flex a hauteur definie ; data-bottombar pour
+            que l'assistant flottant remonte au-dessus. */}
+        <div data-bottombar className="flex-shrink-0 px-5 py-4 pb-safe bg-white border-t border-border">
           <div className="max-w-2xl mx-auto">
             <button
               type="button"
@@ -1281,7 +1286,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
         </button>
       </div>
 
-      <main className="flex-1 overflow-y-auto px-5 pt-2 pb-44 max-w-2xl mx-auto w-full">
+      <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 pt-2 pb-6 max-w-2xl mx-auto w-full">
         <section className="mb-5 rounded-2xl border border-primary bg-primary/5 p-5">
           <p className="text-xs uppercase tracking-wide text-primary text-center mb-3 font-semibold">
             Saisie des métrés à la voix
@@ -1358,7 +1363,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
         ))}
       </main>
 
-      <div className="fixed bottom-0 inset-x-0 z-40 px-5 py-4 pb-safe bg-white border-t border-border">
+      <div data-bottombar className="flex-shrink-0 px-5 py-4 pb-safe bg-white border-t border-border">
         <div className="max-w-2xl mx-auto">
           <div className="mb-3 flex items-center justify-between text-sm">
             <span className="text-gray-500">Total HT</span>

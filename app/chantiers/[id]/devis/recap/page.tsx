@@ -85,8 +85,10 @@ export default async function RecapDevisPage({
   const nomDevis = construireNomDevis(chantier.objet_travaux, chantier.client_nom)
 
   return (
-    <div className="min-h-screen-safe bg-background flex flex-col">
-      <header className="sticky top-0 z-30 bg-header border-b border-white/10 px-5 py-4 pt-safe flex items-center gap-3">
+    // App-shell mobile : hauteur DEFINIE (h-full) + colonne flex => seul le <main>
+    // defile (footer epingle en flux). Meme patron que visite/devis. Voir devis/page.tsx.
+    <div className="h-full bg-background flex flex-col">
+      <header className="flex-shrink-0 sticky top-0 z-30 bg-header border-b border-white/10 px-5 py-4 pt-safe flex items-center gap-3">
         {/* Fleche retour (point 13) : ramene aux METRES (Phase B) via ?etape=metres,
             avec le libelle « Saisir les metres » a cote du chevron. */}
         <Link
@@ -106,7 +108,7 @@ export default async function RecapDevisPage({
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto pb-32 max-w-4xl mx-auto w-full">
+      <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-6 max-w-4xl mx-auto w-full">
         {dejaPouse ? (
           <div className="mx-4 mt-4 mb-4 rounded-2xl border border-primary bg-primary/5 p-6 text-center">
             <div className="mx-auto mb-3 w-14 h-14 rounded-full bg-primary flex items-center justify-center">
@@ -242,9 +244,9 @@ export default async function RecapDevisPage({
         </div>
       </main>
 
-      {/* Sticky CTA push Costructor */}
+      {/* CTA push Costructor : barre d'action EN FLUX (flex-shrink-0), pas fixed. */}
       {!dejaPouse && (
-        <div className="fixed bottom-0 inset-x-0 z-40 px-5 py-4 pb-safe bg-white border-t border-border">
+        <div data-bottombar className="flex-shrink-0 px-5 py-4 pb-safe bg-white border-t border-border">
           <div className="max-w-4xl mx-auto">
             <BoutonPousser
               devisId={devis.id}
