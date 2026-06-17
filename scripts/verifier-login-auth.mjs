@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const email = (process.env.APP_ACCESS_EMAIL || '').trim().toLowerCase()
+const email = (process.argv[2] || process.env.APP_ACCESS_EMAIL || '').trim().toLowerCase()
 const password = process.env.APP_ACCESS_PASSWORD || ''
 
 const supabase = createClient(url, anon, { auth: { persistSession: false } })

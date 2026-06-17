@@ -10,7 +10,9 @@
 // son mot de passe sur APP_ACCESS_PASSWORD et confirmer l'email — ne crée pas de doublon.
 //
 // Lancement (lit .env.local, jamais commité) :
-//   node --env-file=.env.local scripts/creer-utilisateur-auth.mjs
+//   node --env-file=.env.local scripts/creer-utilisateur-auth.mjs               # compte principal (APP_ACCESS_EMAIL)
+//   node --env-file=.env.local scripts/creer-utilisateur-auth.mjs autre@mail.fr # compte de test (email en argument)
+// Le mot de passe est TOUJOURS APP_ACCESS_PASSWORD (partagé par la porte d'accès).
 //
 // Écrit en PROD (crée un compte Auth). Réversible : suppression de l'utilisateur
 // dans le dashboard Supabase (Authentication > Users) ou via admin.deleteUser.
@@ -19,7 +21,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-const email = (process.env.APP_ACCESS_EMAIL || '').trim().toLowerCase()
+const email = (process.argv[2] || process.env.APP_ACCESS_EMAIL || '').trim().toLowerCase()
 const password = process.env.APP_ACCESS_PASSWORD || ''
 
 function abort(msg) {
