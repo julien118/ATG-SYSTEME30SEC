@@ -144,7 +144,11 @@ export async function construireRapportPdf(
     `Téléphone : ${c.client.telephone || 'Non renseigné'}`,
     `Email : ${c.client.email || 'Non renseigné'}`,
     `Date de visite : ${dateAvecHeure || 'Non renseignée'}`,
-  ]) { doc.text(line, M, y); y += 5 }
+  ]) {
+    // Enroulé à la largeur de contenu : une valeur longue (adresse, etc.) passe
+    // à la ligne au lieu de déborder hors de la page.
+    for (const wl of doc.splitTextToSize(line, CW)) { y = pb(doc, y, 5); doc.text(wl, M, y); y += 5 }
+  }
   y += 4
   doc.setDrawColor(220, 220, 220)
   doc.line(M, y, PW - M, y)
@@ -191,24 +195,48 @@ export async function construireRapportPdf(
     }
 
     if (obs.points_vigilance && obs.points_vigilance.length > 0) {
-      const boxH = 10 + obs.points_vigilance.length * 5
-      y = pb(doc, y, boxH + 5)
-      doc.setFillColor(236, 253, 245)
-      doc.setDrawColor(...PRIMARY)
-      doc.roundedRect(M, y, CW, boxH, 2, 2, 'FD')
-      y += 6
-      doc.setFontSize(8)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(...PRIMARY)
-      doc.text('Points de vigilance', M + 4, y)
-      y += 4
-      doc.setFont('helvetica', 'normal')
-      doc.setTextColor(60, 60, 60)
+      // On MESURE d'abord toutes les lignes (chaque puce peut s'enrouler sur
+      // plusieurs lignes), PUIS on trace le cadre a la hauteur EXACTE du contenu :
+      // le texte ne deborde donc jamais hors du cadre.
+      const PADX = 4
+      const LH = 4
+      const lignes: string[] = []
       for (const pt of obs.points_vigilance) {
-        const ptL = doc.splitTextToSize(`• ${pt}`, CW - 8)
-        for (const pl of ptL) { doc.text(pl, M + 4, y); y += 4 }
+        for (const l of doc.splitTextToSize(`• ${pt}`, CW - PADX * 2)) lignes.push(l)
       }
-      y += 5
+      const contentH = 12 + lignes.length * LH
+      const maxBoxH = PH - 35 - 22 // hauteur de contenu utile sur une page entiere
+
+      if (contentH <= maxBoxH) {
+        // Cas normal : le cadre tient sur une page -> on le trace a la bonne hauteur.
+        y = pb(doc, y, contentH + 3)
+        doc.setFillColor(236, 253, 245)
+        doc.setDrawColor(...PRIMARY)
+        doc.roundedRect(M, y, CW, contentH, 2, 2, 'FD')
+        doc.setFontSize(8)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(...PRIMARY)
+        doc.text('Points de vigilance', M + PADX, y + 6)
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(60, 60, 60)
+        let yy = y + 12
+        for (const l of lignes) { doc.text(l, M + PADX, yy); yy += LH }
+        y += contentH + 5
+      } else {
+        // Cas extreme (liste si longue qu'elle depasse une page entiere) : pas de
+        // cadre unique (il deborderait), on rend le titre puis les puces avec sauts
+        // de page pour ne JAMAIS tronquer le texte.
+        doc.setFontSize(8)
+        y = pb(doc, y, 10)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(...PRIMARY)
+        doc.text('Points de vigilance', M + PADX, y)
+        y += 5
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(60, 60, 60)
+        for (const l of lignes) { y = pb(doc, y, LH); doc.text(l, M + PADX, y); y += LH }
+        y += 5
+      }
     }
 
     y += 3
@@ -234,7 +262,8 @@ export async function construireRapportPdf(
     doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(...PRIMARY)
     doc.text('DURÉE ESTIMÉE', M, y); y += 6
     doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(60, 60, 60)
-    doc.text(c.duree_estimee, M, y); y += 8
+    for (const l of doc.splitTextToSize(c.duree_estimee, CW)) { y = pb(doc, y, 5); doc.text(l, M, y); y += 4.5 }
+    y += 3.5
   }
   if (c.notes) {
     y = pb(doc, y, 20)
