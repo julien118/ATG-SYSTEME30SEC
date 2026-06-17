@@ -65,9 +65,11 @@ export default function ChantiersList({ chantiers }: ChantiersListProps) {
 
   // Les 3 sections : Visite technique (Planifié / En cours / Rapport généré),
   // Devis (Devis en cours / Devis envoyé), et Tous.
-  const tabs: { key: Tab; label: string; count: number }[] = [
+  // `court` = libellé compact affiché sur mobile (les 3 onglets se partagent la
+  // largeur ; « Visite technique » passait sur 2 lignes sous ~390px).
+  const tabs: { key: Tab; label: string; court?: string; count: number }[] = [
     { key: 'tous', label: 'Tous', count: chantiers.length },
-    { key: 'visite_technique', label: 'Visite technique', count: countVisite },
+    { key: 'visite_technique', label: 'Visite technique', court: 'Visite', count: countVisite },
     { key: 'devis', label: 'Devis', count: countDevis },
   ]
 
@@ -75,17 +77,19 @@ export default function ChantiersList({ chantiers }: ChantiersListProps) {
     <div className="pb-24">
       {/* Tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1">
-        {tabs.map(({ key, label, count }) => (
+        {tabs.map(({ key, label, court, count }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-all flex items-center justify-center gap-1.5 ${
               tab === key
                 ? 'bg-white text-foreground shadow-sm'
                 : 'text-gray-400 hover:text-gray-600'
             }`}
           >
-            {label}
+            {/* Libellé court sur mobile, complet à partir de sm. */}
+            <span className="sm:hidden">{court ?? label}</span>
+            <span className="hidden sm:inline">{label}</span>
             {count > 0 && (
               <span className={`text-xs min-w-[18px] h-[18px] flex items-center justify-center rounded-full ${
                 tab === key ? 'bg-primary/10 text-primary' : 'bg-gray-200/80 text-gray-400'

@@ -34,11 +34,15 @@ interface Message {
   domaine?: string
 }
 
+// Exemples cliquables : requêtes d'agrégat sur l'ENSEMBLE des devis (elles
+// renvoient toujours une réponse, quel que soit le compte) — on évite de citer
+// un client de démo inexistant (« M. Dupont »). La recherche par nom de client
+// reste disponible dès qu'Olivier en tape un.
 const EXEMPLES = [
   'Mon prix moyen sur les ravalements',
   'Mes 3 plus gros devis',
-  'Qu\'ai-je noté chez M. Dupont ?',
-  'L\'adresse de M. Dupont',
+  'Le total de tous mes devis',
+  'Combien de devis ai-je au total ?',
 ]
 
 // Accueil formule par briques (les sources consultables), pour pouvoir y ajouter
@@ -442,7 +446,7 @@ export default function AssistantDevis() {
               type="submit"
               disabled={!saisie.trim() || reflexion || transcription}
               aria-label="Envoyer"
-              className="h-10 w-10 shrink-0 rounded-full bg-primary text-white flex items-center justify-center disabled:opacity-40 enabled:hover:bg-primary-dark enabled:active:scale-95 transition"
+              className="h-10 w-10 shrink-0 rounded-full bg-primary text-white flex items-center justify-center disabled:bg-gray-200 disabled:text-gray-400 enabled:hover:bg-primary-dark enabled:active:scale-95 transition-colors"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />

@@ -53,7 +53,11 @@
     transform: scale(0.97);
   }
   .btn-primary:disabled {
-    @apply opacity-50 cursor-not-allowed;
+    @apply cursor-not-allowed;
+    /* État désactivé lisible : gris plat plutôt qu'un dégradé vert délavé
+       (qui se lisait « cassé » plutôt que « désactivé »). */
+    background: #e5e7eb; /* gray-200 */
+    color: #9ca3af; /* gray-400 */
     transform: none;
     box-shadow: none;
   }
