@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ToastProvider'
 import Spinner from '@/components/Spinner'
+import { decoderEntitesHtml } from '@/lib/html-entites'
 import type { ArticleDevis, ArticleRemplacable, SectionDevis } from '@/lib/types'
 
 // Normalisation pour la recherche d'article : minuscules, accents retires.
@@ -34,8 +35,7 @@ interface Props {
   // Phase d'ouverture (point 13) : « metres » quand on revient du recap via la
   // fleche « Saisir les metres » (?etape=metres). Defaut « technique ».
   phaseInitiale?: Phase
-  // Moteur du devis et id du modèle cloné (pour le sélecteur de modèle en Phase A).
-  moteurInitial?: string | null
+  // Id du modèle cloné (pour pré-sélectionner le sélecteur de modèle en Phase A).
   modeleIdInitial?: string | null
 }
 
@@ -978,15 +978,15 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                   </div>
                 </div>
               ) : (
-                <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="mb-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
                   <h2 className="text-sm font-bold uppercase tracking-wide text-primary">
                     {s.nom}
                   </h2>
-                  <div className="flex shrink-0 items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:shrink-0 sm:gap-3">
                     <button
                       type="button"
                       onClick={() => ouvrirEditionSection(sIdx, s.nom)}
-                      className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+                      className="action-link"
                     >
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M12 20h9" />
@@ -997,7 +997,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                     <button
                       type="button"
                       onClick={() => setSuppressionSectionCible({ sIdx, nom: s.nom })}
-                      className="text-[11px] text-red-600 hover:underline inline-flex items-center gap-1"
+                      className="action-link action-link-danger"
                     >
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="3 6 5 6 21 6" />
@@ -1018,10 +1018,10 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                       className="border-l-2 border-primary/30 pl-3"
                     >
                       <div className="flex items-baseline justify-between gap-2 mb-2">
-                        <p className="text-sm font-semibold text-foreground flex-1">
-                          {a.libelle}
+                        <p className="text-sm font-semibold text-foreground flex-1 min-w-0 break-words">
+                          {decoderEntitesHtml(a.libelle)}
                         </p>
-                        <p className="text-xs text-gray-400 whitespace-nowrap">
+                        <p className="text-xs text-gray-400 whitespace-nowrap shrink-0">
                           {formatEUR(a.prix_vente)} / {a.unite}
                         </p>
                       </div>
@@ -1070,7 +1070,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                             <button
                               type="button"
                               onClick={() => ouvrirEdition(editKey, a.description_technique)}
-                              className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+                              className="action-link"
                             >
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M12 20h9" />
@@ -1081,7 +1081,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                             <button
                               type="button"
                               onClick={() => ouvrirRecherche(editKey)}
-                              className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+                              className="action-link"
                             >
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="17 1 21 5 17 9" />
@@ -1094,7 +1094,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                             <button
                               type="button"
                               onClick={() => setSuppressionCible({ sIdx, aIdx, libelle: a.libelle })}
-                              className="text-[11px] text-red-600 hover:underline inline-flex items-center gap-1"
+                              className="action-link action-link-danger"
                             >
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="3 6 5 6 21 6" />
@@ -1124,7 +1124,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                 <button
                   type="button"
                   onClick={() => ouvrirAjout(sIdx)}
-                  className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+                  className="action-link"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="12" y1="5" x2="12" y2="19" />
@@ -1173,7 +1173,7 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                 Supprimer cet article ?
               </h3>
               <p className="text-gray-500 text-sm mb-6">
-                L&apos;article <span className="font-medium text-foreground">&quot;{suppressionCible.libelle}&quot;</span> sera
+                L&apos;article <span className="font-medium text-foreground">&quot;{decoderEntitesHtml(suppressionCible.libelle)}&quot;</span> sera
                 retiré du devis.
               </p>
               <div className="flex gap-3">
@@ -1330,7 +1330,9 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                     className="flex items-center gap-2"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground truncate">{a.libelle}</p>
+                      <p className="text-sm text-foreground leading-snug line-clamp-2">
+                        {decoderEntitesHtml(a.libelle)}
+                      </p>
                       <p className="text-xs text-gray-400">
                         {formatEUR(a.prix_vente)} / {a.unite}
                       </p>

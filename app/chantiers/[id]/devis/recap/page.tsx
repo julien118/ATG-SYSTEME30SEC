@@ -6,6 +6,7 @@ import BoutonPousser from './bouton-pousser'
 import BlocTotaux from './bloc-totaux'
 import { ATG_USER_ID } from '@/lib/atg'
 import { construireNomDevis } from '@/lib/costructor'
+import { decoderEntitesHtml } from '@/lib/html-entites'
 import type { Chantier, Devis, SectionDevis } from '@/lib/types'
 
 // Force rendu dynamique sans cache (cohérent avec /devis).
@@ -185,7 +186,7 @@ export default async function RecapDevisPage({
                             lettre), puis une ligne compacte avec les chiffres. */}
                         <div className="sm:hidden px-3 pt-2.5 pb-1.5">
                           <p className="text-sm text-foreground font-medium break-words">
-                            {a.libelle}
+                            {decoderEntitesHtml(a.libelle)}
                           </p>
                           <div className="mt-1 flex items-baseline justify-between gap-2 text-xs tabular-nums">
                             <span className="text-gray-600">
@@ -200,7 +201,7 @@ export default async function RecapDevisPage({
                         {/* DESKTOP (>= sm) : grille en colonnes, INCHANGEE. */}
                         <div className="hidden sm:grid sm:grid-cols-[1fr_80px_80px_110px_120px] gap-2 px-3 pt-2.5 pb-1.5 text-sm items-start">
                           <div className="text-foreground min-w-0 break-words font-medium">
-                            {a.libelle}
+                            {decoderEntitesHtml(a.libelle)}
                           </div>
                           <div className="text-right tabular-nums text-foreground">
                             {a.quantite}

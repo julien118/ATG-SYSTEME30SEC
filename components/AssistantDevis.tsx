@@ -117,6 +117,68 @@ export default function AssistantDevis() {
     if (ouvert) champRef.current?.focus()
   }, [ouvert])
 
+  // --- Bouton flottant non intrusif (audit UI Groupe 1) ---------------------
+  // Le lanceur ne doit jamais recouvrir une modale ni les barres d'action fixes,
+  // ni gener la lecture du contenu pendant le defilement.
+  // - masque : une modale / un overlay bloquant est ouvert => on cache le lanceur
+  //   (toutes les modales de l'app sont des `.fixed.inset-0`).
+  // - bottomStyle : on remonte le lanceur AU-DESSUS de la barre d'action fixe la
+  //   plus haute (`.fixed.bottom-0`), avec un ecart de 16px. Sans barre, on garde
+  //   le socle d'origine (6.5rem) qui degage le bouton "+" de l'accueil.
+  const [masque, setMasque] = useState(false)
+  // Pendant le defilement on attenue le lanceur (et on le rend traversant) pour
+  // ne pas masquer le contenu lu ; il reapparait des que ca s'arrete.
+  const [defile, setDefile] = useState(false)
+  const BASE_BOTTOM = 'calc(6.5rem + max(12px, env(safe-area-inset-bottom)))'
+  const [bottomStyle, setBottomStyle] = useState<string>(BASE_BOTTOM)
+  useEffect(() => {
+    let raf = 0
+    let t: ReturnType<typeof setTimeout>
+    function recompute() {
+      // masque : une modale / overlay bloquant ouvert (toutes en `.fixed.inset-0`).
+      setMasque(!!document.querySelector('.fixed.inset-0'))
+      // On remonte le lanceur au-dessus de toute barre d'action actuellement collee
+      // au bas de la fenetre : les barres fixes (`.fixed.bottom-0`) ET les barres en
+      // flux marquees `[data-bottombar]` (rapport, visite) une fois defilees en bas.
+      const vh = window.innerHeight
+      let maxIntrusion = 0
+      document
+        .querySelectorAll<HTMLElement>('.fixed.bottom-0, [data-bottombar]')
+        .forEach((el) => {
+          const r = el.getBoundingClientRect()
+          if (r.height > 0 && r.bottom >= vh - 2) {
+            const intrusion = vh - r.top // hauteur visible depuis le bas
+            if (intrusion > maxIntrusion) maxIntrusion = intrusion
+          }
+        })
+      setBottomStyle(maxIntrusion > 0 ? `${Math.round(maxIntrusion) + 16}px` : BASE_BOTTOM)
+    }
+    function planifier() {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(recompute)
+    }
+    // Le defilement a lieu dans <main overflow-y-auto> : phase capture sur window
+    // pour capter ces scrolls internes (l'evenement scroll ne bulle pas).
+    function onScroll() {
+      setDefile(true)
+      clearTimeout(t)
+      t = setTimeout(() => setDefile(false), 500)
+      planifier()
+    }
+    planifier()
+    const mo = new MutationObserver(planifier)
+    mo.observe(document.body, { childList: true, subtree: true })
+    window.addEventListener('resize', planifier)
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true })
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(t)
+      mo.disconnect()
+      window.removeEventListener('resize', planifier)
+      window.removeEventListener('scroll', onScroll, true)
+    }
+  }, [])
+
   // Coeur d'un echange : affiche une bulle utilisateur, appelle l'API et affiche la
   // reponse du bot. `corps` est le corps de la requete (question + eventuels
   // clientForce/domaineForce pour un clic sur un candidat). On memorise sur la bulle
@@ -227,21 +289,22 @@ export default function AssistantDevis() {
 
   return (
     <>
-      {/* Bouton flottant */}
-      {!ouvert && (
+      {/* Bouton flottant (masque quand une modale est ouverte) */}
+      {!ouvert && !masque && (
         <button
           onClick={() => setOuvert(true)}
           aria-label="Ouvrir l'assistant ATG"
           // Discret au repos (un peu plus petit, semi-transparent), pleine
-          // presence au survol / focus / contact tactile.
-          className="fixed right-5 z-50 h-12 w-12 rounded-full bg-primary text-white shadow-md shadow-primary/30 flex items-center justify-center opacity-70 hover:opacity-100 focus-visible:opacity-100 active:opacity-100 hover:bg-primary-dark active:scale-95 transition animate-scale-in"
-          // Empilee AU-DESSUS du bouton "ajouter une visite" (bottom-8 = 32px,
-          // marge mb-safe = max(12px, safe-area), hauteur 56px) avec un ecart
-          // constant de 16px : 32 + 56 + 16 = 104px (6.5rem), plus le MEME socle
-          // mb-safe pour que l'ecart reste de 16px avec ou sans safe-area iOS.
-          // Ainsi la pastille ne chevauche jamais le bouton d'ajout (prioritaire)
-          // ni les barres CTA en bas de page.
-          style={{ bottom: 'calc(6.5rem + max(12px, env(safe-area-inset-bottom)))' }}
+          // presence au survol / focus / contact tactile. Attenue et traversant
+          // pendant le defilement pour ne pas masquer le contenu lu.
+          className={`fixed right-5 z-50 h-12 w-12 rounded-full bg-primary text-white shadow-md shadow-primary/30 flex items-center justify-center hover:bg-primary-dark active:scale-95 transition-all duration-300 animate-scale-in ${
+            defile
+              ? 'opacity-0 translate-y-1 pointer-events-none'
+              : 'opacity-70 hover:opacity-100 focus-visible:opacity-100 active:opacity-100'
+          }`}
+          // Remonte au-dessus de la barre d'action fixe la plus haute (mesuree),
+          // sinon socle 6.5rem qui degage le bouton "+" de l'accueil.
+          style={{ bottom: bottomStyle }}
         >
           <IconeBot className="h-6 w-6" />
         </button>

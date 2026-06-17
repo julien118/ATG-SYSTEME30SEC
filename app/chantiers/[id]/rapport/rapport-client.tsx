@@ -451,6 +451,7 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
       )}
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
+       <div className="max-w-2xl mx-auto w-full">
         {/* Bandeau Devis Express : point de bascule vers le module devis */}
         <div className="mb-5 rounded-2xl border border-primary bg-primary/5 p-4">
           <div className="flex items-start gap-3 mb-3">
@@ -508,10 +509,12 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
         </div>
 
         <ReportView contenu={rapport} onUpdate={handleUpdate} heureVisite={heureVisite} />
+       </div>
       </div>
 
       {/* Action bar */}
-      <div className="flex-shrink-0 bg-white border-t border-border px-5 py-4 pb-safe space-y-2">
+      <div data-bottombar className="flex-shrink-0 bg-white border-t border-border px-5 py-4 pb-safe">
+       <div className="max-w-2xl mx-auto w-full space-y-2">
         <div className="flex gap-3">
           <button onClick={handleRegenerate} disabled={generating} className="btn-tertiary flex-1 text-sm py-3 flex items-center justify-center gap-1.5">
             {generating && <Spinner className="h-4 w-4" />}
@@ -537,6 +540,7 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
           </svg>
           Télécharger le rapport
         </a>
+       </div>
       </div>
     </>
   )

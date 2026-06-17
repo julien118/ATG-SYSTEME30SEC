@@ -103,6 +103,30 @@
     box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
   }
 
+  /* ---- Liens d'action inline (cibles tactiles >= 40px, style homogene) ---- */
+  /* Conserve l'aspect "lien" discret mais avec une zone tactile confortable
+     et un fond au survol/contact pour une affordance coherente. */
+  .action-link {
+    @apply inline-flex items-center gap-1.5 min-h-[40px] rounded-lg px-2.5 py-1.5
+           text-xs font-medium text-primary
+           transition-colors;
+  }
+  .action-link:hover {
+    @apply bg-primary/5;
+  }
+  .action-link:active {
+    @apply bg-primary/10;
+  }
+  .action-link-danger {
+    @apply text-red-600;
+  }
+  .action-link-danger:hover {
+    @apply bg-red-50;
+  }
+  .action-link-danger:active {
+    @apply bg-red-100;
+  }
+
   /* ---- Status Badges ---- */
 
   .badge-en-cours {

@@ -237,7 +237,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
               Meme chevron et memes classes que les autres ecrans (coherence). */}
           <Link
             href={`/chantiers/${chantier.id}`}
-            className="p-1 -ml-1 text-gray-300 hover:text-white transition-colors"
+            className="flex h-10 w-10 -ml-2 items-center justify-center rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
             aria-label="Retour"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -291,7 +291,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
       </div>
 
       {/* BARRE D'ACTIONS FIXE */}
-      <div className="flex-shrink-0 bg-white border-t border-border px-5 py-4 pb-safe">
+      <div data-bottombar className="flex-shrink-0 bg-white border-t border-border px-5 py-4 pb-safe">
         <div className="max-w-lg mx-auto">
         {/* Indice "decrire la photo" : sans compte a rebours, Olivier prend le
             temps qu'il veut pour dicter sa description. */}

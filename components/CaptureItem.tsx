@@ -100,7 +100,8 @@ export default function CaptureItem({ item, linkedVocal, onDelete, onEditTranscr
         <div className="flex justify-end mt-2">
           <button
             onClick={() => onDelete(item.id, linkedVocal?.id)}
-            className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
+            aria-label="Supprimer cette capture"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="3 6 5 6 21 6" />
