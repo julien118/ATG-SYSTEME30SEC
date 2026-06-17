@@ -1,7 +1,7 @@
 export default function VisiteLoading() {
   return (
     <div className="h-full flex flex-col bg-background">
-      <header className="flex-shrink-0 bg-[#1a1a1a] border-b border-white/10 px-5 py-4 pt-safe">
+      <header className="flex-shrink-0 bg-header border-b border-white/10 px-5 py-4 pt-safe">
         <div className="max-w-lg mx-auto flex items-center justify-between">
           <div>
             <div className="skeleton h-5 w-36 mb-1" />

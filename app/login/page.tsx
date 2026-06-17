@@ -63,7 +63,7 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen-safe bg-background flex flex-col">
       {/* Bandeau sombre ATG */}
-      <header className="bg-[#1a1a1a] px-5 py-4 pt-safe flex items-center justify-center">
+      <header className="bg-header px-5 py-4 pt-safe flex items-center justify-center">
         <Image
           src="/logo-atg-blanc-sans-numero.png"
           alt="ATG"

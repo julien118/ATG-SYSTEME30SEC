@@ -86,7 +86,7 @@ export default async function RecapDevisPage({
 
   return (
     <div className="min-h-screen-safe bg-background flex flex-col">
-      <header className="sticky top-0 z-30 bg-[#1a1a1a] border-b border-white/10 px-5 py-4 pt-safe flex items-center gap-3">
+      <header className="sticky top-0 z-30 bg-header border-b border-white/10 px-5 py-4 pt-safe flex items-center gap-3">
         {/* Fleche retour (point 13) : ramene aux METRES (Phase B) via ?etape=metres,
             avec le libelle « Saisir les metres » a cote du chevron. */}
         <Link

@@ -420,7 +420,7 @@ export default function AssistantDevis() {
           >
             {/* Message discret : micro refuse ou transcription echouee. */}
             {erreurVocal && (
-              <p className="text-[11px] text-red-600 px-1" role="status">
+              <p className="text-xs text-red-600 px-1" role="status">
                 {erreurVocal}
               </p>
             )}

@@ -57,7 +57,7 @@ export default async function ChantiersPage() {
   return (
     <div className="min-h-screen-safe bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-[#1a1a1a] border-b border-white/10 px-5 py-4 pt-safe flex items-center justify-between">
+      <header className="sticky top-0 z-30 bg-header border-b border-white/10 px-5 py-4 pt-safe flex items-center justify-between">
         <LogoLink width={110} height={26} />
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-200">

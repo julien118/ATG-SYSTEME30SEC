@@ -230,7 +230,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
   return (
     <div className="h-full flex flex-col bg-background">
       {/* HEADER FIXE */}
-      <header className="flex-shrink-0 bg-[#1a1a1a] border-b border-white/10 px-5 py-4 pt-safe">
+      <header className="flex-shrink-0 bg-header border-b border-white/10 px-5 py-4 pt-safe">
         <div className="max-w-lg mx-auto flex items-center gap-3">
           {/* Fleche retour (point 8) : ramene a l'ecran contact. Grace au point 7,
               cet ecran ne redirige plus « en_cours » vers la visite => pas de boucle.
