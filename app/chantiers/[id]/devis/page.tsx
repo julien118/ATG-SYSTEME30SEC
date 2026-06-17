@@ -92,6 +92,8 @@ export default async function DevisPage({
         devisId={devis.id}
         sectionsInitiales={sections}
         phaseInitiale={searchParams?.etape === 'metres' ? 'metres' : 'technique'}
+        moteurInitial={devis.moteur ?? null}
+        modeleIdInitial={devis.modele_id ?? null}
       />
     </div>
   )

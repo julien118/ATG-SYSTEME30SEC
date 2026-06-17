@@ -34,6 +34,9 @@ interface Props {
   // Phase d'ouverture (point 13) : « metres » quand on revient du recap via la
   // fleche « Saisir les metres » (?etape=metres). Defaut « technique ».
   phaseInitiale?: Phase
+  // Moteur du devis et id du modèle cloné (pour le sélecteur de modèle en Phase A).
+  moteurInitial?: string | null
+  modeleIdInitial?: string | null
 }
 
 function formatEUR(n: number): string {
@@ -44,12 +47,18 @@ function formatEUR(n: number): string {
   }).format(n)
 }
 
-export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, phaseInitiale }: Props) {
+export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, phaseInitiale, modeleIdInitial }: Props) {
   const router = useRouter()
   const toast = useToast()
 
   const [phase, setPhase] = useState<Phase>(phaseInitiale ?? 'technique')
   const [sections, setSections] = useState<SectionDevis[]>(sectionsInitiales)
+  // Sélecteur de modèle (Phase A) : liste live des modèles d'Olivier, modèle
+  // courant, verrou de reconstruction, et id en attente de confirmation de switch.
+  const [modelesDispo, setModelesDispo] = useState<Array<{ id: string; libelle: string }>>([])
+  const [modeleCourant, setModeleCourant] = useState<string | null>(modeleIdInitial ?? null)
+  const [switchModeleEnCours, setSwitchModeleEnCours] = useState(false)
+  const [confirmSwitchId, setConfirmSwitchId] = useState<string | null>(null)
   const [etat, setEtat] = useState<EtatMicro>('pret')
   const [duree, setDuree] = useState(0)
   const [animKeys, setAnimKeys] = useState<Record<string, boolean>>({})
@@ -121,6 +130,21 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
     }
   }, [])
 
+  // Charge la liste LIVE des modèles d'Olivier (lecture seule) pour le sélecteur.
+  // Une seule fois au montage ; échec silencieux (le sélecteur ne s'affiche pas).
+  useEffect(() => {
+    let annule = false
+    fetch('/api/devis/modeles')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!annule && Array.isArray(d?.modeles)) setModelesDispo(d.modeles)
+      })
+      .catch(() => {})
+    return () => {
+      annule = true
+    }
+  }, [])
+
   const totalHT = Math.round(
     sections.reduce(
       (acc, s) =>
@@ -129,6 +153,48 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
     ) * 100,
   ) / 100
   const totalTTC = Math.round(totalHT * 1.1 * 100) / 100
+
+  // ---------- Sélecteur de modèle (Phase A) ----------
+  // Reconstruit la proposition technique à partir d'un autre modèle d'Olivier.
+  // Appelle /api/devis/proposer avec le modeleId imposé (override) : le serveur
+  // re-clone le modèle choisi et renvoie les nouvelles sections. On les applique
+  // immédiatement (pas de rechargement). Lecture seule côté Costructor.
+  async function appliquerModele(id: string) {
+    if (switchModeleEnCours || id === modeleCourant) return
+    setConfirmSwitchId(null)
+    setSwitchModeleEnCours(true)
+    annulerAutoSave()
+    try {
+      const res = await fetch('/api/devis/proposer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chantierId, modeleId: id }),
+      })
+      const data = await res.json()
+      if (!res.ok || !Array.isArray(data.sections)) {
+        throw new Error(data.error ?? 'Changement de modèle impossible')
+      }
+      setSections(data.sections)
+      sectionsRef.current = data.sections
+      setModeleCourant(data.modeleChoisi?.id ?? id)
+      // Base neuve : on repart propre (les éventuelles modifs précédentes ont été
+      // remplacées par la reconstruction, c'est le comportement attendu).
+      aModifieRef.current = false
+      toast.show('Proposition reconstruite sur le modèle choisi.', 'success')
+    } catch (e) {
+      toast.show((e as Error).message, 'error')
+    } finally {
+      setSwitchModeleEnCours(false)
+    }
+  }
+
+  // Changement demandé via le sélecteur : si Olivier a déjà modifié la proposition,
+  // on confirme (la reconstruction remplace ses modifications) ; sinon on applique.
+  function demanderChangementModele(id: string) {
+    if (!id || id === modeleCourant || switchModeleEnCours) return
+    if (aModifieRef.current) setConfirmSwitchId(id)
+    else void appliquerModele(id)
+  }
 
   // ---------- Auto-save des metres manuels (etape D) ----------
 
@@ -773,11 +839,75 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
               Proposition technique
             </p>
             <p className="text-xs text-gray-600">
-              L&apos;IA a structuré votre devis en {sections.length} sections et {totalArticles} postes,
-              avec pour chacun un descriptif technique justifié par vos observations.
-              Vous pouvez modifier chaque description avant de saisir les métrés.
+              {modeleCourant
+                ? `Devis bâti sur votre modèle, structuré en ${sections.length} sections et ${totalArticles} postes.`
+                : `Devis structuré en ${sections.length} sections et ${totalArticles} postes.`}{' '}
+              Vous pouvez tout modifier (sections, articles, descriptions) avant de saisir les métrés.
             </p>
+
+            {modelesDispo.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-primary/20">
+                <label
+                  htmlFor="modele-devis"
+                  className="block text-xs font-medium text-gray-600 mb-1"
+                >
+                  Modèle de devis (votre logique de chiffrage)
+                </label>
+                <select
+                  id="modele-devis"
+                  value={modeleCourant ?? ''}
+                  disabled={switchModeleEnCours}
+                  onChange={(e) => demanderChangementModele(e.target.value)}
+                  className="input-ionnyx w-full text-sm disabled:opacity-50"
+                >
+                  {!modeleCourant && (
+                    <option value="">— Aucun modèle (proposition générée) —</option>
+                  )}
+                  {modelesDispo.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.libelle}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px] text-gray-400">
+                  {switchModeleEnCours
+                    ? 'Reconstruction de la proposition…'
+                    : 'Changer de modèle reconstruit la proposition à partir de ce modèle.'}
+                </p>
+              </div>
+            )}
           </div>
+
+          {/* Confirmation avant de reconstruire sur un autre modèle (si modifs en cours). */}
+          {confirmSwitchId && (
+            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+              <div
+                className="absolute inset-0 bg-black/40"
+                onClick={() => setConfirmSwitchId(null)}
+              />
+              <div className="relative w-full sm:max-w-sm bg-white rounded-t-2xl sm:rounded-2xl p-6 pb-safe animate-slide-up sm:animate-scale-in">
+                <h3 className="text-lg font-bold text-foreground mb-2">Changer de modèle ?</h3>
+                <p className="text-gray-500 text-sm mb-6">
+                  La proposition technique sera reconstruite à partir du modèle choisi.
+                  Vos modifications en cours seront remplacées.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => appliquerModele(confirmSwitchId)}
+                    className="btn-primary w-full"
+                  >
+                    Reconstruire
+                  </button>
+                  <button
+                    onClick={() => setConfirmSwitchId(null)}
+                    className="btn-tertiary w-full"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {sections.map((s, sIdx) => (
             <section
