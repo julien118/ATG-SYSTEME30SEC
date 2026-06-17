@@ -232,7 +232,9 @@ export default function AssistantDevis() {
         <button
           onClick={() => setOuvert(true)}
           aria-label="Ouvrir l'assistant ATG"
-          className="fixed right-5 z-50 h-14 w-14 rounded-full bg-primary text-white shadow-lg shadow-primary/30 flex items-center justify-center hover:bg-primary-dark active:scale-95 transition animate-scale-in"
+          // Discret au repos (un peu plus petit, semi-transparent), pleine
+          // presence au survol / focus / contact tactile.
+          className="fixed right-5 z-50 h-12 w-12 rounded-full bg-primary text-white shadow-md shadow-primary/30 flex items-center justify-center opacity-70 hover:opacity-100 focus-visible:opacity-100 active:opacity-100 hover:bg-primary-dark active:scale-95 transition animate-scale-in"
           // Empilee AU-DESSUS du bouton "ajouter une visite" (bottom-8 = 32px,
           // marge mb-safe = max(12px, safe-area), hauteur 56px) avec un ecart
           // constant de 16px : 32 + 56 + 16 = 104px (6.5rem), plus le MEME socle
@@ -241,7 +243,7 @@ export default function AssistantDevis() {
           // ni les barres CTA en bas de page.
           style={{ bottom: 'calc(6.5rem + max(12px, env(safe-area-inset-bottom)))' }}
         >
-          <IconeBot className="h-7 w-7" />
+          <IconeBot className="h-6 w-6" />
         </button>
       )}
 
