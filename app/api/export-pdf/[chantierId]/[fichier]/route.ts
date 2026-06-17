@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { construireRapportPdf } from '@/lib/rapport-pdf'
+import { reportError } from '@/lib/monitoring'
 import { formaterHeureVisite, nomFichierRapport } from '@/lib/utils'
 import type { RapportContenu } from '@/lib/types'
 
@@ -61,7 +62,8 @@ export async function GET(
         'Cache-Control': 'private, no-store',
       },
     })
-  } catch {
+  } catch (e) {
+    await reportError('Export PDF', e)
     return NextResponse.json({ error: 'PDF generation failed' }, { status: 500 })
   }
 }

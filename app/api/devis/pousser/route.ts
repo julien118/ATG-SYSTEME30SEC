@@ -6,6 +6,7 @@
 // pousse via Costructor API, persiste l'ID + URL retournés.
 
 import { NextResponse } from 'next/server'
+import { reportError } from '@/lib/monitoring'
 import {
   calculerTotalHT,
   calculerTotalTTC,
@@ -198,6 +199,7 @@ export async function POST(request: Request) {
     }
   } catch (e) {
     console.error('[api/devis/pousser]', e)
+    await reportError('Push devis Costructor', e)
     return NextResponse.json(
       { ok: false, error: (e as Error).message ?? 'Erreur push Costructor' },
       { status: 500 },

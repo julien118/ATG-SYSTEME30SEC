@@ -8,6 +8,7 @@
 
 import { NextResponse } from 'next/server'
 import { proposerDevis } from '@/lib/quote-proposer'
+import { reportError } from '@/lib/monitoring'
 import { listerArticlesBibliotheque } from '@/lib/costructor'
 import { ATG_USER_ID } from '@/lib/atg'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -304,6 +305,7 @@ export async function POST(request: Request) {
     })
   } catch (e) {
     console.error('[api/devis/proposer]', e)
+    await reportError('Proposition de devis', e)
     return NextResponse.json(
       { error: (e as Error).message ?? 'Erreur proposition devis' },
       { status: 500 },

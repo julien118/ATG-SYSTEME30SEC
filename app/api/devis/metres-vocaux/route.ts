@@ -10,6 +10,7 @@
 
 import { NextResponse } from 'next/server'
 import { parserMetres, appliquerUpdates } from '@/lib/metrics-parser'
+import { reportError } from '@/lib/monitoring'
 import { transcrireAudio } from '@/lib/transcription'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Devis, SectionDevis } from '@/lib/types'
@@ -113,6 +114,7 @@ export async function POST(request: Request) {
     })
   } catch (e) {
     console.error('[api/devis/metres-vocaux]', e)
+    await reportError('Métrés vocaux', e)
     return NextResponse.json(
       { error: (e as Error).message ?? 'Erreur métrés vocaux' },
       { status: 500 },

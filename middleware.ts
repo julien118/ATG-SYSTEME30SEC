@@ -5,13 +5,24 @@ import { verifySession, signSession, COOKIE_NAME, SESSION_DUREE_MS } from '@/lib
 //  - /login + /api/auth/* : nécessaires pour se connecter
 //  - /r/* + /api/export-pdf/* : le lien du compte-rendu PDF partagé aux
 //    CLIENTS d'Olivier depuis le devis Costructor (ils n'ont pas de compte)
+//  - surveillance (/api/cron, /api/usage-digest, /api/model-health) : appelées
+//    par le cron Vercel / les tests SANS session (le cron envoie le bearer
+//    CRON_SECRET mais pas le cookie de session) → sans cette exception, la porte
+//    d'accès renverrait 401 AVANT le handler et le cron ne tournerait jamais.
+//    Ces routes restent protégées par leur PROPRE vérification de CRON_SECRET.
+//  - /api/client-error : volontairement public (remontée des crashs navigateur,
+//    même hors session, ex. écran de login). N'expose rien, répond toujours ok.
 // (les assets statiques sont déjà exclus par le `matcher` ci-dessous)
 function estPublique(pathname: string): boolean {
   return (
     pathname === '/login' ||
     pathname.startsWith('/api/auth/') ||
     pathname.startsWith('/r/') ||
-    pathname.startsWith('/api/export-pdf/')
+    pathname.startsWith('/api/export-pdf/') ||
+    pathname === '/api/cron' ||
+    pathname === '/api/usage-digest' ||
+    pathname === '/api/model-health' ||
+    pathname === '/api/client-error'
   )
 }
 

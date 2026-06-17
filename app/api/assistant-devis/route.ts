@@ -8,6 +8,7 @@
 
 import { NextResponse } from 'next/server'
 import { repondreAssistant } from '@/lib/assistant/orchestrateur'
+import { reportError } from '@/lib/monitoring'
 import type { DomaineAssistant } from '@/lib/assistant/aiguilleur'
 import { nettoyerHistorique } from '@/lib/assistant/historique'
 
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ reponse, domaine, nb, clientContexte, candidats })
   } catch (e) {
     console.error('[api/assistant-devis]', e)
+    await reportError('Assistant', e)
     return NextResponse.json(
       { error: 'Désolé, une erreur est survenue. Réessayez dans un instant.' },
       { status: 500 },

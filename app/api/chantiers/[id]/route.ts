@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { ATG_USER_ID } from '@/lib/atg'
+import { reportError } from '@/lib/monitoring'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 // Mode démo ATG : pas de check d'auth, RLS désactivée côté DB.
@@ -103,7 +104,8 @@ export async function DELETE(
   }
 
   return NextResponse.json({ success: true })
-  } catch {
+  } catch (e) {
+    await reportError('Suppression de chantier', e)
     return NextResponse.json({ error: 'Delete failed' }, { status: 500 })
   }
 }

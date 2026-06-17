@@ -6,6 +6,7 @@ import { SYSTEM_PROMPT, buildUserPrompt } from '@/lib/prompts'
 import { ATG_USER_ID } from '@/lib/atg'
 import { persistRapportPdf } from '@/lib/rapport-pdf'
 import { nettoyerRapportContenu } from '@/lib/utils'
+import { reportError } from '@/lib/monitoring'
 import type { Chantier, CaptureItem, RapportContenu } from '@/lib/types'
 
 // Mode démo ATG : pas de check d'auth, pas de limite "2 rapports".
@@ -150,6 +151,7 @@ export async function POST(request: Request) {
     // Sans ce log, l'erreur etait avalee : invisible dans les Runtime Logs Vercel
     // (c'est ce qui a complique le diagnostic de la retraite du modele Claude).
     console.error('[api/generate-report]', e)
+    await reportError('Génération de rapport', e)
     return NextResponse.json({ error: 'Report generation failed' }, { status: 500 })
   }
 }

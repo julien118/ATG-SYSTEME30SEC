@@ -9,6 +9,7 @@
 
 import { NextResponse } from 'next/server'
 import { listerContactsRecherche } from '@/lib/costructor'
+import { reportError } from '@/lib/monitoring'
 
 export const runtime = 'nodejs'
 
@@ -18,6 +19,7 @@ export async function GET() {
     return NextResponse.json({ contacts })
   } catch (e) {
     console.error('[api/contacts]', e)
+    await reportError('Contacts Costructor', e)
     return NextResponse.json(
       { error: 'Impossible de charger les contacts' },
       { status: 500 },

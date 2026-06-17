@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { transcrireAudio, reponctuer } from '@/lib/transcription'
+import { reportError } from '@/lib/monitoring'
 
 // Mode démo ATG : pas de check d'auth.
 // Lot 2 : transcription Whisper (prompt metier + temperature 0), puis passe de
@@ -15,7 +16,8 @@ export async function POST(request: Request) {
     const texte = await reponctuer(brut)
 
     return NextResponse.json({ text: texte })
-  } catch {
+  } catch (e) {
+    await reportError('Transcription vocale', e)
     return NextResponse.json({ error: 'Transcription failed' }, { status: 500 })
   }
 }
