@@ -514,18 +514,19 @@ export function calculerTotalHT(sections: SectionDevis[]): number {
   return Math.round(total * 100) / 100
 }
 
-// Nom/titre parlant du devis (lot 6.1), construit de facon deterministe depuis
-// l'objet des travaux dicte (chantier.objet_travaux), dans l'esprit des intitules
-// d'Olivier (ex : « Travaux d'isolation exterieure cuisine »). Premiere lettre en
-// capitale, espaces normalises. Repli sur le client si l'objet est vide.
+// Nom/titre par defaut du devis : le nom du client (= le nom du chantier, qui n'a
+// pas d'identite propre cote modele). Olivier le surcharge ensuite a la main sur
+// l'ecran recap si besoin. Repli sur l'objet des travaux dicte puis sur un libelle
+// generique si le client est vide. Espaces normalises.
 export function construireNomDevis(
   objetTravaux: string | null | undefined,
   clientNom: string | null | undefined,
 ): string {
+  const client = (clientNom ?? '').replace(/\s+/g, ' ').trim()
+  if (client) return client
   const objet = (objetTravaux ?? '').replace(/\s+/g, ' ').trim()
   if (objet) return objet.charAt(0).toUpperCase() + objet.slice(1)
-  const client = (clientNom ?? '').trim()
-  return client ? `Ravalement facade ${client}` : 'Ravalement facade'
+  return 'Ravalement facade'
 }
 
 // Total TTC depuis le taux de TVA en points de pourcentage (defaut 10 = 10 %).

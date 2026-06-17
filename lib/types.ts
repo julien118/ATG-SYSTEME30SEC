@@ -227,7 +227,7 @@ export interface CostructorQuotePayload {
   customer: string // ID contact (cnt_xxx)
   description: string
   lines: CostructorQuoteLine[]
-  // Nom/titre parlant du devis, construit depuis chantier.objet_travaux (lot 6.1).
+  // Nom/titre du devis : par defaut le nom du client (chantier), surchargeable.
   name?: string
   // Date de la visite technique prealable, format AAAA-MM-JJ (lot 6.2).
   preVisitAt?: string
