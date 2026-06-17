@@ -298,12 +298,13 @@ export default function AssistantDevis() {
         <button
           onClick={() => setOuvert(true)}
           aria-label="Ouvrir l'assistant ATG"
-          // Discret au repos (un peu plus petit, semi-transparent), pleine
-          // presence au survol / focus / contact tactile. Attenue et traversant
-          // pendant le defilement pour ne pas masquer le contenu lu.
+          // Discret au repos (semi-transparent), pleine presence au survol / focus /
+          // contact tactile. Le fondu au defilement est UNIQUEMENT sur ordinateur
+          // (variantes sm:) : sur telephone le robot reste visible et cliquable en
+          // permanence (sinon, sans curseur, impossible de le rappeler).
           className={`fixed right-5 z-50 h-12 w-12 rounded-full bg-primary text-white shadow-md shadow-primary/30 flex items-center justify-center hover:bg-primary-dark active:scale-95 transition-all duration-300 animate-scale-in ${
             defile
-              ? 'opacity-0 translate-y-1 pointer-events-none'
+              ? 'opacity-70 sm:opacity-0 sm:translate-y-1 sm:pointer-events-none'
               : 'opacity-70 hover:opacity-100 focus-visible:opacity-100 active:opacity-100'
           }`}
           // Remonte au-dessus de la barre d'action fixe la plus haute (mesuree),
