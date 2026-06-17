@@ -19,7 +19,15 @@ interface ChantierCardProps {
 function formatDate(dateStr: string | null) {
   if (!dateStr) return null
   const d = new Date(dateStr)
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+  // timeZone figée (Europe/Paris) : sans elle, le rendu serveur (UTC) et le rendu
+  // client (fuseau du navigateur) peuvent afficher un jour différent près de minuit
+  // → erreur d'hydratation. La figer rend l'affichage déterministe et correct (FR).
+  return d.toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Europe/Paris',
+  })
 }
 
 function getChantierHref(chantier: Chantier, statutAffiche: StatutAffiche) {
