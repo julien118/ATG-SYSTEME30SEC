@@ -1,0 +1,15 @@
+-- =============================================================
+-- 009 - Bucket audio en privé (défense en profondeur)
+-- =============================================================
+-- L'app sert l'audio par URL SIGNÉE (createSignedUrl) et ne le rejoue JAMAIS dans
+-- l'UI (l'audio sert uniquement à la transcription, envoyée directement à
+-- /api/transcribe sans repasser par le storage). Le bucket peut donc être privé
+-- sans aucun impact fonctionnel, ce qui empêche l'accès direct par
+-- /object/public/audio/... La RLS (migration 008) autorise déjà le rôle
+-- authenticated à lire/écrire (createSignedUrl + upload).
+--
+-- Le bucket `photos` reste PUBLIC volontairement : les photos sont embarquées
+-- dans le PDF du compte rendu que les clients d'Olivier ouvrent publiquement,
+-- donc les rendre privées serait un bénéfice marginal pour un vrai risque de
+-- régression (affichage app + embed PDF + parsing de suppression). Appliquée via MCP.
+UPDATE storage.buckets SET public = false WHERE id = 'audio';
