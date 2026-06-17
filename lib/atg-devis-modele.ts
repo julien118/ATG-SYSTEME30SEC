@@ -848,6 +848,61 @@ export function deriverSectionsDepuisModele(
   return sections
 }
 
+// ---------- Pré-remplissage des quantités dictées (couche 3) ----------
+// Remplit, sur les sections clonées de la proposition, les quantités QUE le pro a
+// dictées (façade par façade + transversal + points singuliers), pour qu'Olivier
+// vérifie/ajuste au lieu de tout saisir. On ne touche QU'aux quantités encore
+// vides (les forfaits déjà pré-remplis restent intacts) et on ne met une valeur
+// que si elle a été dictée (>0) ; sinon on laisse vide (Olivier complète). Mêmes
+// règles de rôle que le push (roleProduit + MESURE_FACADE), donc cohérent. Le
+// doublon ITE « partie non chauffée » reste vide pour ne pas doubler la surface.
+export function prefillerQuantites(
+  sections: SectionDevis[],
+  metres: MetresDevis,
+): SectionDevis[] {
+  const facadeParNom = new Map<string, MetresFacade>()
+  for (const f of metres.facades) facadeParNom.set(normaliser(f.nom), f)
+  // Points singuliers dictés, indexés par rôle (pour remplir les articles ajoutés).
+  const qteParRolePoint = new Map<RoleProduit, number>()
+  for (const pt of metres.points_singuliers) {
+    if (pt.quantite && pt.quantite > 0) qteParRolePoint.set(roleProduit(pt.libelle), pt.quantite)
+  }
+  const tr = metres.transversal
+
+  return sections.map((s) => {
+    const facade = facadeParNom.get(normaliser(s.nom))
+    return {
+      ...s,
+      articles: s.articles.map((a) => {
+        if (a.quantite != null) return a // déjà rempli (forfait) : on ne touche pas
+        const role = roleProduit(a.libelle)
+        let q: number | null = null
+        if (facade) {
+          // Section façade : la mesure dépend du rôle de l'article.
+          const nonChauffee = /non chauffee/.test(normaliser(a.libelle))
+          if ((role === 'ite_systeme' || role === 'isolant_pse') && nonChauffee) {
+            q = null // surface dictée = partie chauffée ; on ne double pas
+          } else {
+            const cle = MESURE_FACADE[role]
+            const v = cle ? facade[cle] : null
+            if (typeof v === 'number' && v > 0) q = v
+          }
+        } else if (role === 'echafaudage' && (tr.echafaudage_m2 ?? 0) > 0) {
+          q = tr.echafaudage_m2!
+        } else if (role === 'lavage' && (tr.lavage_m2 ?? 0) > 0) {
+          q = tr.lavage_m2!
+        } else if (role === 'traitement' && (tr.traitement_m2 ?? 0) > 0) {
+          q = tr.traitement_m2!
+        } else {
+          const pq = qteParRolePoint.get(role)
+          if (pq) q = pq
+        }
+        return q != null ? { ...a, quantite: q } : a
+      }),
+    }
+  })
+}
+
 // ---------- Reconstruction au PUSH (Approche A, coeur du commit 3) ----------
 // Quand un devis moteur='clonage' est pousse, on rebatit l'arbre FIDELE du
 // modele depuis le snapshot fige, en REINJECTANT les quantites validees par

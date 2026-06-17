@@ -5,8 +5,10 @@ import {
   listerModelesCible,
   lireModeleExpand,
   deriverSectionsDepuisModele,
+  prefillerQuantites,
   type ProduitPlat,
   type PointSingulier,
+  type MetresDevis,
 } from '../lib/atg-devis-modele'
 import { ajouterPointsSinguliers, enrichirDescriptions } from '../lib/enrichir-devis'
 import type { SectionDevis } from '../lib/types'
@@ -73,6 +75,35 @@ if (!i3) {
     }
   }
 }
+
+// ---------- Couche 3 : pré-remplissage des quantités dictées (pur) ----------
+console.log('\n========== COUCHE 3 : pré-remplissage des quantités (pur) ==========')
+const sectionsQ: SectionDevis[] = [
+  { nom: 'Façade Sud', articles: [
+    { costructor_article_id: 'rav', libelle: 'Ravalement I3 finition talochée Virtuotech', unite: 'm²', prix_vente: 38, quantite: null, description_technique: '' },
+    { costructor_article_id: 'app', libelle: 'Découpe des appuis de fenêtres', unite: 'ml', prix_vente: 20, quantite: null, description_technique: '' },
+    { costructor_article_id: 'isonc', libelle: 'Isolation des murs partie non chauffée - Fourniture système Isolation Thermique Extérieur StarSystem', unite: 'm²', prix_vente: 130, quantite: null, description_technique: '' },
+    { costructor_article_id: 'depl', libelle: 'Déplacements, installation du chantier', unite: 'u', prix_vente: 289, quantite: 1, description_technique: '' },
+  ] },
+  { nom: 'Elévation, lavage, traitement', articles: [
+    { costructor_article_id: 'lav', libelle: 'Lavage haute pression', unite: 'm²', prix_vente: 4, quantite: null, description_technique: '' },
+    { costructor_article_id: 'ech', libelle: 'Amené du matériel, montage échafaudage Comabi R200', unite: 'm²', prix_vente: 6, quantite: null, description_technique: '' },
+  ] },
+]
+const metresQ: MetresDevis = {
+  facades: [{ nom: 'Façade Sud', surface_m2: 45, appuis_ml: 6 }],
+  transversal: { lavage_m2: 90, echafaudage_m2: 120 },
+  points_singuliers: [],
+}
+const rempli = prefillerQuantites(sectionsQ, metresQ)
+const art = (sec: string, id: string) =>
+  rempli.find((s) => s.nom === sec)?.articles.find((a) => a.costructor_article_id === id)
+ck('façade : ravalement = surface dictée (45)', art('Façade Sud', 'rav')?.quantite === 45)
+ck('façade : appuis = mesure dictée (6)', art('Façade Sud', 'app')?.quantite === 6)
+ck('façade : ITE non chauffée laissée vide (anti-doublon)', art('Façade Sud', 'isonc')?.quantite == null)
+ck('forfait déplacement intact (1)', art('Façade Sud', 'depl')?.quantite === 1)
+ck('transversal : lavage = dicté (90)', art('Elévation, lavage, traitement', 'lav')?.quantite === 90)
+ck('transversal : échafaudage = dicté (120)', art('Elévation, lavage, traitement', 'ech')?.quantite === 120)
 
 console.log(`\nRECAP enrichissement : ${p} PASS | ${f} FAIL`)
 if (f > 0) process.exit(1)

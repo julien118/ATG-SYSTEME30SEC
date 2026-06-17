@@ -19,6 +19,7 @@ import {
   lireModeleExpand,
   listerModelesCible,
   listerProduitsPlats,
+  prefillerQuantites,
 } from '@/lib/atg-devis-modele'
 import { ajouterPointsSinguliers, enrichirDescriptions } from '@/lib/enrichir-devis'
 import type {
@@ -162,6 +163,10 @@ export async function POST(request: Request) {
           } catch (e) {
             console.warn('[api/devis/proposer] points singuliers ignorés :', (e as Error).message)
           }
+          // Couche 3 : pré-remplir les quantités dictées (façades + transversal +
+          // points). On ne remplit que ce qui a été dicté ; le reste reste vide,
+          // Olivier complète/ajuste aux métrés. Cohérent avec le push (mêmes rôles).
+          sectionsClonage = prefillerQuantites(sectionsClonage, metres)
           // Couche 1 : descriptions adaptées au chantier (état observé par façade,
           // style Olivier), ancrées sur les libellés du modèle. Fail-open interne.
           sectionsClonage = await enrichirDescriptions(sectionsClonage, dicteeComplete)
