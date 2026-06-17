@@ -42,6 +42,8 @@ export async function middleware(request: NextRequest) {
   // getUser(). On accumule les cookies mis à jour sur `response`. Best-effort :
   // tout échec est avalé pour ne JAMAIS bloquer la porte d'accès.
   let response = NextResponse.next({ request })
+  let sessionSupabase: { id: string } | null = null
+  let sessionVerifiee = false
   try {
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -61,7 +63,9 @@ export async function middleware(request: NextRequest) {
         },
       },
     )
-    await supabase.auth.getUser()
+    const { data } = await supabase.auth.getUser()
+    sessionSupabase = data.user
+    sessionVerifiee = true // la vérif a abouti (session présente OU absente, mais pas d'erreur réseau)
   } catch {
     // Un souci de rafraîchissement de session ne doit jamais verrouiller l'app.
   }
@@ -72,6 +76,20 @@ export async function middleware(request: NextRequest) {
   // --- 3) Porte d'accès maison (autorité pour les PAGES) ---
   const connecte = await verifySession(request.cookies.get(COOKIE_NAME)?.value)
   if (connecte) {
+    // FILET ANTI PAGE-VIDE : cookie maison valide MAIS aucune session Supabase
+    // (typiquement un ancien cookie d'avant la bascule Auth). Comme la RLS est
+    // active, les données seraient VIDES → on force une reconnexion qui rétablit
+    // la session Supabase. Uniquement pour les PAGES, et SEULEMENT si la vérif a
+    // abouti (sinon une erreur réseau transitoire causerait un faux-logout).
+    if (sessionVerifiee && !sessionSupabase && !pathname.startsWith('/api/')) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      url.search = ''
+      url.searchParams.set('next', cibleInterneSure(pathname + request.nextUrl.search))
+      const redirect = NextResponse.redirect(url)
+      response.cookies.getAll().forEach((c) => redirect.cookies.set(c))
+      return redirect
+    }
     // Session glissante : on reprolonge le cookie à CHAQUE visite. Tant qu'Olivier
     // utilise l'app, sa session ne vieillit jamais → il n'est jamais déconnecté
     // tout seul. (Seul un changement d'email/mot de passe met fin aux sessions.)
