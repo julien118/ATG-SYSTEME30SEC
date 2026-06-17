@@ -205,6 +205,24 @@ export async function POST(request: Request) {
       ? { moteur: 'clonage', modele_id: clonage.modeleId, modele_snapshot: clonage.snapshot }
       : { moteur: 'plat', modele_id: null, modele_snapshot: null }
 
+    // Switch de modèle (modeleIdChoisi) vs régénération franche (regenerer) :
+    // - régénération : reset complet, on repart d'un devis vierge (lien Costructor
+    //   inclus) ;
+    // - switch : on PRÉSERVE le lien Costructor (costructor_devis_id/url, pousse_le,
+    //   erreur_push). Ainsi, si Olivier avait déjà poussé puis change de modèle, le
+    //   re-push en mode 'remplacer' SUPPRIME proprement l'ancien devis Costructor
+    //   (idempotence par costructor_devis_id) au lieu d'en créer un doublon orphelin,
+    //   et la pop-up « devis déjà envoyé » reste active (signal !!costructor_devis_id).
+    const estSwitchModele = !!modeleIdChoisi
+    const resetLienCostructor = estSwitchModele
+      ? {}
+      : {
+          costructor_devis_id: null,
+          costructor_devis_url: null,
+          pousse_le: null,
+          erreur_push: null,
+        }
+
     // ---------- Sections de proposition ----------
     let sections: SectionDevis[]
     if (clonage) {
@@ -251,10 +269,9 @@ export async function POST(request: Request) {
           statut: 'sections_proposees',
           total_ht: null,
           total_ttc: null,
-          costructor_devis_id: null,
-          costructor_devis_url: null,
-          pousse_le: null,
-          erreur_push: null,
+          // Lien Costructor : reset complet en régénération, préservé en switch (cf.
+          // resetLienCostructor ci-dessus) pour éviter le doublon orphelin au re-push.
+          ...resetLienCostructor,
           // Moteur de generation (reset a chaque regeneration : si une dictee
           // passe d'ITE a ravalement, on repasse proprement de clonage a plat).
           ...champsMoteur,
