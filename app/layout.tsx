@@ -29,6 +29,11 @@ export const metadata: Metadata = {
     ],
     apple: '/apple-touch-icon.png',
   },
+  appleWebApp: {
+    // Nom pré-rempli quand Olivier (ou Julien) fait « Sur l'écran d'accueil » sur iOS.
+    title: 'Système 30 Secondes',
+    capable: true,
+  },
   robots: {
     index: false,
     follow: false,

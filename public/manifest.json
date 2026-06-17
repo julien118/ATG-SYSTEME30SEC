@@ -1,6 +1,6 @@
 {
-  "name": "ATG — Système 30 Secondes",
-  "short_name": "ATG",
+  "name": "Système 30 Secondes",
+  "short_name": "Système 30 Secondes",
   "description": "Système 30 Secondes par IONNYX",
   "start_url": "/chantiers",
   "display": "standalone",
