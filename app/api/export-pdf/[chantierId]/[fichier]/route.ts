@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { construireRapportPdf } from '@/lib/rapport-pdf'
 import { reportError } from '@/lib/monitoring'
 import { formaterHeureVisite, nomFichierRapport } from '@/lib/utils'
@@ -18,19 +17,10 @@ export async function GET(
   { params }: { params: { chantierId: string; fichier: string } },
 ) {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() { return cookieStore.getAll() },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-          },
-        },
-      },
-    )
+    // Route PUBLIQUE (le client d'Olivier ouvre son CR sans compte) : pas de
+    // session ici. On lit donc en ADMIN (service_role) qui contourne la RLS —
+    // sinon le verrouillage Phase 2 casserait le lien du compte rendu.
+    const supabase = createAdminClient()
 
     const { data: rapport } = await supabase
       .from('rapports')
