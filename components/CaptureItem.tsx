@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { CaptureItem as CaptureItemType } from '@/lib/types'
+import { urlImageRedimensionnee } from '@/lib/image-supabase'
 
 interface CaptureItemProps {
   item: CaptureItemType
@@ -40,9 +41,12 @@ export default function CaptureItem({ item, linkedVocal, onDelete, onEditTranscr
         <div className="relative">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={item.photo_url}
+            // Vignette redimensionnee : evite de telecharger/decoder la photo pleine
+            // resolution dans la timeline de visite (fluidite scroll mobile).
+            src={urlImageRedimensionnee(item.photo_url, { width: 800, quality: 70 })}
             alt={`Capture #${item.position}`}
             loading="lazy"
+            decoding="async"
             className="w-full max-h-64 object-contain bg-gray-50"
           />
           <span className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded-lg">

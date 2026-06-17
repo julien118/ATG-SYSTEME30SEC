@@ -83,11 +83,13 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
     }, 5500)
 
     try {
-      const res = await fetch('/api/devis/proposer', {
+      // Timeout : une connexion mobile qui pend laisserait l'overlay `.fixed inset-0`
+      // (preparingDevis) bloque indefiniment => page gelee. AbortError gere ci-dessous.
+      const res = await fetchWithTimeout('/api/devis/proposer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chantierId }),
-      })
+      }, 60000)
       clearInterval(stepInterval)
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -101,7 +103,10 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
       }, 400)
     } catch (e) {
       clearInterval(stepInterval)
-      toast.show((e as Error).message, 'error')
+      const msg = e instanceof DOMException && e.name === 'AbortError'
+        ? 'La préparation prend trop de temps. Vérifiez votre réseau et réessayez.'
+        : (e as Error).message
+      toast.show(msg, 'error')
       setPreparingDevis(false)
       setDevisProgressStep(0)
     }

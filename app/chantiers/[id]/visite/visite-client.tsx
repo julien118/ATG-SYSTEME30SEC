@@ -206,12 +206,22 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
     if (ending) return
     setEnding(true)
 
-    await supabase
-      .from('chantiers')
-      .update({ statut: 'termine' })
-      .eq('id', chantier.id)
-
-    router.push(`/chantiers/${chantier.id}/rapport`)
+    // ROBUSTESSE MOBILE : sans garde, un echec reseau laissait `ending` a true et la
+    // modale `.fixed.inset-0` ouverte => tactile bloque, oblige de rafraichir. On
+    // garantit donc qu'en cas d'echec on rouvre la main a l'utilisateur (toast + reset).
+    try {
+      const { error } = await supabase
+        .from('chantiers')
+        .update({ statut: 'termine' })
+        .eq('id', chantier.id)
+      if (error) throw error
+      router.push(`/chantiers/${chantier.id}/rapport`)
+      // On NE remet PAS `ending` a false : la navigation est en cours, on garde le
+      // spinner « Redirection... » jusqu'au changement de page.
+    } catch (e) {
+      toast.show('Impossible de terminer la visite. Vérifiez votre réseau et réessayez.', 'error')
+      setEnding(false)
+    }
   }
 
   // ---- BUILD TIMELINE ----

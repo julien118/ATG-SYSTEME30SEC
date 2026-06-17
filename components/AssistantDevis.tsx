@@ -110,6 +110,9 @@ export default function AssistantDevis() {
   const compteur = useRef(0)
   const finRef = useRef<HTMLDivElement>(null)
   const champRef = useRef<HTMLInputElement>(null)
+  // Etat « en train de defiler » miroir en ref : evite un setState React a CHAQUE
+  // evenement de scroll (sinon re-render du widget par tick => saturation mobile).
+  const defileRef = useRef(false)
 
   // Defile en bas a chaque nouveau message / pendant la reflexion.
   useEffect(() => {
@@ -136,11 +139,24 @@ export default function AssistantDevis() {
   const BASE_BOTTOM = 'calc(6.5rem + max(12px, env(safe-area-inset-bottom)))'
   const [bottomStyle, setBottomStyle] = useState<string>(BASE_BOTTOM)
   useEffect(() => {
-    let raf = 0
-    let t: ReturnType<typeof setTimeout>
+    // PERFORMANCE MOBILE : ce widget est monte sur TOUTES les pages. Le recalcul de
+    // position fait un reflow synchrone (getBoundingClientRect) ; le declencher a
+    // chaque frame de scroll ou a chaque mutation DOM sature le thread principal sur
+    // telephone (scroll qui se fige). On bride donc tout :
+    //  - recompute throttle a >= MIN_INTERVAL ms (un reflow toutes les ~130ms suffit) ;
+    //  - MutationObserver debounce (les rafales frappe/upload/re-render collapsent) ;
+    //  - `defile` mis a jour seulement sur transition (via defileRef), pas par tick.
+    const MIN_INTERVAL = 130
+    let rafId = 0
+    let throttleT: ReturnType<typeof setTimeout> | undefined
+    let idleT: ReturnType<typeof setTimeout> | undefined
+    let moT: ReturnType<typeof setTimeout> | undefined
+    let lastCompute = 0
+
     function recompute() {
       // masque : une modale / overlay bloquant ouvert (toutes en `.fixed.inset-0`).
-      setMasque(!!document.querySelector('.fixed.inset-0'))
+      const m = !!document.querySelector('.fixed.inset-0')
+      setMasque((prev) => (prev === m ? prev : m))
       // On remonte le lanceur au-dessus de toute barre d'action actuellement collee
       // au bas de la fenetre : les barres fixes (`.fixed.bottom-0`) ET les barres en
       // flux marquees `[data-bottombar]` (rapport, visite) une fois defilees en bas.
@@ -155,28 +171,54 @@ export default function AssistantDevis() {
             if (intrusion > maxIntrusion) maxIntrusion = intrusion
           }
         })
-      setBottomStyle(maxIntrusion > 0 ? `${Math.round(maxIntrusion) + 16}px` : BASE_BOTTOM)
+      const next = maxIntrusion > 0 ? `${Math.round(maxIntrusion) + 16}px` : BASE_BOTTOM
+      setBottomStyle((prev) => (prev === next ? prev : next))
     }
+    function doRecompute() {
+      rafId = 0
+      lastCompute = Date.now()
+      recompute()
+    }
+    // Coalesce (1 rAF max) + throttle temporel : jamais plus d'un reflow / MIN_INTERVAL.
     function planifier() {
-      cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(recompute)
+      if (rafId || throttleT) return
+      const reste = MIN_INTERVAL - (Date.now() - lastCompute)
+      if (reste <= 0) {
+        rafId = requestAnimationFrame(doRecompute)
+      } else {
+        throttleT = setTimeout(() => {
+          throttleT = undefined
+          rafId = requestAnimationFrame(doRecompute)
+        }, reste)
+      }
     }
     // Le defilement a lieu dans <main overflow-y-auto> : phase capture sur window
     // pour capter ces scrolls internes (l'evenement scroll ne bulle pas).
     function onScroll() {
-      setDefile(true)
-      clearTimeout(t)
-      t = setTimeout(() => setDefile(false), 500)
+      if (!defileRef.current) {
+        defileRef.current = true
+        setDefile(true)
+      }
+      clearTimeout(idleT)
+      idleT = setTimeout(() => {
+        defileRef.current = false
+        setDefile(false)
+      }, 500)
       planifier()
     }
     planifier()
-    const mo = new MutationObserver(planifier)
+    const mo = new MutationObserver(() => {
+      clearTimeout(moT)
+      moT = setTimeout(planifier, 200)
+    })
     mo.observe(document.body, { childList: true, subtree: true })
     window.addEventListener('resize', planifier)
     window.addEventListener('scroll', onScroll, { passive: true, capture: true })
     return () => {
-      cancelAnimationFrame(raf)
-      clearTimeout(t)
+      cancelAnimationFrame(rafId)
+      clearTimeout(throttleT)
+      clearTimeout(idleT)
+      clearTimeout(moT)
       mo.disconnect()
       window.removeEventListener('resize', planifier)
       window.removeEventListener('scroll', onScroll, true)

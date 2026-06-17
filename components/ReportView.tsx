@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { RapportContenu } from '@/lib/types'
+import { urlImageRedimensionnee } from '@/lib/image-supabase'
 
 interface ReportViewProps {
   contenu: RapportContenu
@@ -88,12 +89,16 @@ export default function ReportView({ contenu, onUpdate, heureVisite }: ReportVie
             {obs.photos.length > 0 && (
               <div className="px-4 pb-3 space-y-3">
                 {obs.photos.map((photo, pi) => (
-                  <div key={pi} className="flex flex-col items-center">
+                  <div key={pi} className="flex flex-col items-center min-h-[8rem]">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={photo.url}
+                      // Vignette redimensionnee (~800px) pour ne pas telecharger/decoder
+                      // plusieurs Mo sur mobile (cause de blocage du scroll). Le tap ouvre
+                      // la photo pleine resolution (photo.url) en plein ecran.
+                      src={urlImageRedimensionnee(photo.url, { width: 800, quality: 70 })}
                       alt={photo.legende}
                       loading="lazy"
+                      decoding="async"
                       onClick={() => setFullscreenPhoto(photo.url)}
                       className="w-auto max-w-full max-h-96 rounded-lg cursor-pointer hover:opacity-95 transition-opacity"
                     />
@@ -162,6 +167,7 @@ export default function ReportView({ contenu, onUpdate, heureVisite }: ReportVie
           <img
             src={fullscreenPhoto}
             alt="Photo plein écran"
+            decoding="async"
             className="max-w-full max-h-full object-contain"
             onClick={(e) => e.stopPropagation()}
           />
