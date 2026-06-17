@@ -18,7 +18,9 @@ import {
   extraireMetres,
   lireModeleExpand,
   listerModelesCible,
+  listerProduitsPlats,
 } from '@/lib/atg-devis-modele'
+import { ajouterPointsSinguliers, enrichirDescriptions } from '@/lib/enrichir-devis'
 import type {
   CaptureItem,
   ModeleSnapshot,
@@ -145,8 +147,25 @@ export async function POST(request: Request) {
           .filter((n) => n.length > 0)
         if (nomsFacades.length === 0) nomsFacades = ['Façade']
 
-        const sectionsClonage = deriverSectionsDepuisModele(modele.lines ?? [], nomsFacades)
+        let sectionsClonage = deriverSectionsDepuisModele(modele.lines ?? [], nomsFacades)
         if (sectionsClonage.length > 0) {
+          // ENRICHISSEMENT depuis le rapport (le modèle est le squelette, on y
+          // greffe ce qu'Olivier a observé/dicté). Couche 2 : ajouter les points
+          // singuliers évoqués depuis ses VRAIS articles (jamais inventé).
+          try {
+            const produits = await listerProduitsPlats()
+            sectionsClonage = ajouterPointsSinguliers(
+              sectionsClonage,
+              metres.points_singuliers,
+              produits,
+            )
+          } catch (e) {
+            console.warn('[api/devis/proposer] points singuliers ignorés :', (e as Error).message)
+          }
+          // Couche 1 : descriptions adaptées au chantier (état observé par façade,
+          // style Olivier), ancrées sur les libellés du modèle. Fail-open interne.
+          sectionsClonage = await enrichirDescriptions(sectionsClonage, dicteeComplete)
+
           clonage = {
             sections: sectionsClonage,
             modeleId: modeleEffectifId,
