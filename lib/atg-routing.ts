@@ -262,3 +262,88 @@ export function selectionnerModele(
     alternatives,
   }
 }
+
+// =============================================================
+// Sélection ROBUSTE du modèle (clonage généralisé à TOUTES les typologies)
+// =============================================================
+// Plutôt que des prédicats codés en dur sur la description (fragiles dès qu'Olivier
+// renomme/édite ses modèles), on SCORE chaque modèle LIVE par recouvrement de mots
+// discriminants entre le SIGNAL (objet des travaux + dictée) et le NOM + la
+// description du modèle. Robuste aux renommages : tant que le nom reflète le type
+// (« Ravalement I3 taloché », « ITE… »), le bon modèle ressort. C'est une
+// PRÉ-SÉLECTION best-effort : le sélecteur hybride côté UI laisse toujours Olivier
+// confirmer ou changer depuis la liste live de ses modèles.
+
+// Un poids est compté quand le mot apparaît À LA FOIS dans le signal ET dans le
+// nom/description du modèle. Les variantes proches (I3 taloché vs I3 peinture) se
+// départagent par leurs mots propres (taloch / peinture).
+const MOTS_TYPE_MODELE: Array<{ re: RegExp; poids: number }> = [
+  { re: /\bite\b|isolation thermique|isolation par l.?ext|isolation exterieure|isolant|polystyr|\bpse\b|baumit|starsystem/, poids: 3 },
+  { re: /\bi4\b/, poids: 3 },
+  { re: /\bi3\b/, poids: 2 },
+  { re: /taloch/, poids: 2 },
+  { re: /peinture|virtuotech/, poids: 2 },
+  { re: /ravalement/, poids: 1 },
+]
+
+export interface ModeleDispo {
+  id: string
+  libelle: string
+}
+
+export interface ChoixModele {
+  modeleId: string | null
+  libelle: string | null
+  score: number
+  // true si deux modèles arrivent ex aequo (l'UI invite alors à confirmer).
+  ambigu: boolean
+  // Liste complète des modèles exploitables (pour le sélecteur hybride).
+  modelesDisponibles: ModeleDispo[]
+  alternatives: Array<{ id: string; libelle: string; score: number }>
+}
+
+// Modèles réellement exploitables : vrai modèle (model:true) + non vide (total>0).
+// On NE requiert PAS de description (un modèle valide peut en être dépourvu, ex.
+// « Isolation thermique par l'extérieur »). On écarte les brouillons de test.
+export function modelesReels(modeles: ModeleDevis[]): ModeleDevis[] {
+  return modeles.filter(
+    (m) => m.model && (m.total ?? 0) > 0 && !/test.*supprimer/i.test(`${m.name ?? ''} ${m.description ?? ''}`),
+  )
+}
+
+export function choisirModele(signal: string, modeles: ModeleDevis[]): ChoixModele {
+  const sig = normaliser(signal)
+  const reels = modelesReels(modeles)
+  const modelesDisponibles: ModeleDispo[] = reels.map((m) => ({
+    id: m.id,
+    libelle: (m.name ?? '').trim() || normaliser(m.description ?? '').slice(0, 48) || m.id,
+  }))
+
+  const scored = reels
+    .map((m) => {
+      const cible = normaliser(`${m.name ?? ''} ${m.description ?? ''}`)
+      const score = MOTS_TYPE_MODELE.reduce(
+        (s, { re, poids }) => s + (re.test(sig) && re.test(cible) ? poids : 0),
+        0,
+      )
+      return { id: m.id, libelle: (m.name ?? '').trim() || m.id, score, total: m.total ?? 0 }
+    })
+    // Tri : meilleur score d'abord ; à égalité, le modèle le plus complet (total).
+    .sort((a, b) => b.score - a.score || b.total - a.total)
+
+  const meilleur = scored[0]
+  const second = scored[1]
+  if (!meilleur || meilleur.score === 0) {
+    return { modeleId: null, libelle: null, score: 0, ambigu: false, modelesDisponibles, alternatives: [] }
+  }
+  return {
+    modeleId: meilleur.id,
+    libelle: meilleur.libelle,
+    score: meilleur.score,
+    ambigu: !!second && second.score === meilleur.score,
+    modelesDisponibles,
+    alternatives: scored
+      .filter((s) => s.id !== meilleur.id && s.score > 0)
+      .map(({ id, libelle, score }) => ({ id, libelle, score })),
+  }
+}

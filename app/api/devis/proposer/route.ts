@@ -11,7 +11,7 @@ import { proposerDevis } from '@/lib/quote-proposer'
 import { listerArticlesBibliotheque } from '@/lib/costructor'
 import { ATG_USER_ID } from '@/lib/atg'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { selectionnerModele, type ModeleDevis } from '@/lib/atg-routing'
+import { choisirModele, type ModeleDevis } from '@/lib/atg-routing'
 import {
   compteCibleCostructor,
   deriverSectionsDepuisModele,
@@ -28,9 +28,11 @@ import type {
 
 export async function POST(request: Request) {
   try {
-    const { chantierId, regenerer } = (await request.json()) as {
+    const { chantierId, regenerer, modeleId: modeleIdChoisi } = (await request.json()) as {
       chantierId?: string
       regenerer?: boolean
+      // Modèle imposé par Olivier via le sélecteur (override de l'auto-détection).
+      modeleId?: string
     }
     if (!chantierId) {
       return NextResponse.json({ error: 'chantierId manquant' }, { status: 400 })
@@ -42,7 +44,7 @@ export async function POST(request: Request) {
     // Vérifie l'appartenance du chantier au user démo ATG.
     const { data: chantier, error: errC } = await supabase
       .from('chantiers')
-      .select('id, user_id, client_nom')
+      .select('id, user_id, client_nom, objet_travaux')
       .eq('id', chantierId)
       .eq('user_id', ATG_USER_ID)
       .single()
@@ -55,7 +57,9 @@ export async function POST(request: Request) {
     // remplacements d'articles). On renvoie le devis existant tel quel, SANS toucher
     // a sections_finales et SANS appeler Claude. La regeneration n'a lieu que si elle
     // est demandee EXPLICITEMENT (regenerer === true). Filet serveur, en plus de l'UI.
-    if (!regenerer) {
+    // Switch de modèle explicite (modeleIdChoisi) = re-dérivation volontaire
+    // (l'UI confirme côté Olivier avant d'écraser d'éventuels métrés).
+    if (!regenerer && !modeleIdChoisi) {
       const { data: existant } = await supabase
         .from('devis')
         .select('id, sections_finales, sections_proposees')
@@ -90,22 +94,27 @@ export async function POST(request: Request) {
       )
     }
 
-    // ---------- Aiguillage moteur (commit 2) ----------
-    // On concatene les dictees et on laisse selectionnerModele trancher la
-    // famille. ITE confiant (haute/moyenne) + modele ITE exploitable -> moteur
-    // de CLONAGE : on lit le modele (GET compte test, la replique du modele
-    // d'Olivier ; la lecture du vrai compte Olivier viendra au commit 4), on
-    // fige son snapshot, et on DERIVE des SectionDevis depuis lui. Sinon ->
-    // repli sur le moteur PLAT actuel (fail-safe : ravalement, famille inconnue,
-    // confiance basse, pas de modele, aucune facade detectee, ou toute erreur
-    // de lecture). Le format de sortie reste SectionDevis[] dans les deux cas :
-    // le recap et la saisie des metres d'Olivier ne changent pas (Approche A).
+    // ---------- Sélection + clonage du modèle (généralisé à TOUTES les typologies) ----------
+    // On ne réplique plus seulement l'ITE : pour CHAQUE type de travaux, on
+    // reconnaît le modèle d'Olivier correspondant (choisirModele, score sur le
+    // NOM/description — robuste à ses renommages) et on le CLONE fidèlement : son
+    // ORDRE, ses postes systématiques (lavage, algicide/fongicide...), descriptions
+    // et TVA ligne par ligne. Le modèle est lu EN DIRECT (GET sur le compte cible),
+    // donc toute modif d'Olivier dans Costructor est reflétée au prochain devis,
+    // sans rien à synchroniser. L'override `modeleIdChoisi` (sélecteur hybride)
+    // prime sur l'auto-détection. L'IA générique (moteur plat) ne sert plus que de
+    // DERNIER filet si AUCUN modèle ne correspond. Format de sortie inchangé
+    // (SectionDevis[]) : récap, métrés et édition d'Olivier ne changent pas.
     const dicteeComplete = transcriptions.join('\n\n')
+    const signal = `${chantier.objet_travaux ?? ''}\n${dicteeComplete}`
+
     let clonage: {
       sections: SectionDevis[]
       modeleId: string
+      libelle: string | null
       snapshot: ModeleSnapshot
     } | null = null
+    let modelesDisponibles: Array<{ id: string; libelle: string }> = []
     try {
       const modelesRaw = await listerModelesCible()
       const modeles: ModeleDevis[] = modelesRaw.map((m: any) => ({
@@ -115,56 +124,55 @@ export async function POST(request: Request) {
         total: m.total ?? null,
         model: !!m.model,
       }))
-      const routage = selectionnerModele(dicteeComplete, modeles)
-      // On declenche le clonage sur une famille ITE FRANCHE (forte marge de
-      // famille) + un modele ITE trouve, et NON sur la confiance globale : cette
-      // derniere exige un modele unique et retombe a 'basse' sur les repliques
-      // identiques du compte test (piste A). margeFamille est le vrai signal de
-      // securite ; le seuil franc (>= 2) evite de declencher sur un ITE incertain.
-      const iteConfiant =
-        routage.famille === 'ite' &&
-        routage.margeFamille >= 2 &&
-        !!routage.modeleId
-      if (iteConfiant) {
-        const modele = await lireModeleExpand(routage.modeleId as string)
-        // Detection des facades depuis la dictee (on n'en garde que les NOMS :
-        // les quantites seront saisies par Olivier au recap, Approche A).
+      const choix = choisirModele(signal, modeles)
+      modelesDisponibles = choix.modelesDisponibles
+
+      // Modèle effectif : l'override explicite d'Olivier prime sur l'auto-détection
+      // (et on vérifie qu'il fait bien partie des modèles exploitables).
+      const modeleEffectifId =
+        modeleIdChoisi && modelesDisponibles.some((m) => m.id === modeleIdChoisi)
+          ? modeleIdChoisi
+          : choix.modeleId
+
+      if (modeleEffectifId) {
+        const modele = await lireModeleExpand(modeleEffectifId)
+        // Noms de façades depuis la dictée (quantités saisies ensuite par Olivier).
+        // À défaut, une façade générique : on clone le modèle plutôt que de
+        // retomber sur l'IA (Olivier renomme/duplique ensuite si besoin).
         const metres = await extraireMetres(dicteeComplete)
-        const nomsFacades = metres.facades
+        let nomsFacades = metres.facades
           .map((f) => (f.nom ?? '').trim())
           .filter((n) => n.length > 0)
-        if (nomsFacades.length > 0) {
-          const sectionsClonage = deriverSectionsDepuisModele(
-            modele.lines ?? [],
-            nomsFacades,
-          )
-          if (sectionsClonage.length > 0) {
-            clonage = {
-              sections: sectionsClonage,
-              modeleId: routage.modeleId as string,
-              snapshot: {
-                id: modele.id ?? null,
-                subtotal: modele.subtotal ?? null,
-                lines: modele.lines ?? [],
-                // Compte source (garde de cohérence au push) : la cible de lecture.
-                compte: compteCibleCostructor(),
-              },
-            }
+        if (nomsFacades.length === 0) nomsFacades = ['Façade']
+
+        const sectionsClonage = deriverSectionsDepuisModele(modele.lines ?? [], nomsFacades)
+        if (sectionsClonage.length > 0) {
+          clonage = {
+            sections: sectionsClonage,
+            modeleId: modeleEffectifId,
+            libelle:
+              modelesDisponibles.find((m) => m.id === modeleEffectifId)?.libelle ?? null,
+            snapshot: {
+              id: modele.id ?? null,
+              subtotal: modele.subtotal ?? null,
+              lines: modele.lines ?? [],
+              // Compte source (garde de cohérence au push) : la cible de lecture.
+              compte: compteCibleCostructor(),
+            },
           }
         }
       }
       console.log(
-        `[api/devis/proposer] aiguillage : famille=${routage.famille} confiance=${routage.confiance} -> ${
-          clonage ? 'CLONAGE' : 'moteur plat'
-        } (${routage.raison})`,
+        `[api/devis/proposer] modèle="${clonage?.libelle ?? '—'}" ` +
+          `(auto="${choix.libelle ?? '—'}"${modeleIdChoisi ? `, override=${modeleIdChoisi}` : ''}) ` +
+          `-> ${clonage ? 'CLONAGE' : 'moteur plat'}`,
       )
     } catch (e) {
-      console.warn('[api/devis/proposer] aiguillage clonage echoue, repli plat :', e)
+      console.warn('[api/devis/proposer] sélection/clonage échouée, repli plat :', e)
       clonage = null
     }
 
-    // Champs moteur a persister selon l'aiguillage (le push reste plat tant que
-    // le commit 3 n'est pas la ; ces champs ne sont encore lus par aucune route).
+    // Champs moteur à persister selon la sélection (lus par le push).
     const champsMoteur: {
       moteur: MoteurDevis
       modele_id: string | null
@@ -246,7 +254,13 @@ export async function POST(request: Request) {
       devisId = cree.id
     }
 
-    return NextResponse.json({ devisId, sections })
+    return NextResponse.json({
+      devisId,
+      sections,
+      moteur: clonage ? 'clonage' : 'plat',
+      modeleChoisi: clonage ? { id: clonage.modeleId, libelle: clonage.libelle } : null,
+      modelesDisponibles,
+    })
   } catch (e) {
     console.error('[api/devis/proposer]', e)
     return NextResponse.json(
