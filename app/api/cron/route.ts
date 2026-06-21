@@ -78,5 +78,16 @@ export async function GET(request: Request) {
     }
   }
 
+  // Heartbeat → Tour de Contrôle (confirme que le cron quotidien a bien tourné).
+  try {
+    await fetch('https://ionnyx-tour-de-controle.vercel.app/api/ingest', {
+      method: 'POST',
+      headers: { 'x-ionnyx-token': process.env.TOUR_INGEST_SECRET || '', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ system: 'atg', module: 'cron-7h', type: 'heartbeat', titre: 'Cron quotidien ATG OK', detail: resume }),
+    })
+  } catch (e) {
+    console.error('[cron] heartbeat Tour:', e)
+  }
+
   return NextResponse.json({ ok: true, ...resume })
 }
