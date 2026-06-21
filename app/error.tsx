@@ -7,6 +7,7 @@
 // alors que la mise en page a echoue).
 
 import { useEffect } from 'react'
+import * as Sentry from '@sentry/nextjs'
 
 export default function Error({
   error,
@@ -16,6 +17,7 @@ export default function Error({
   reset: () => void
 }) {
   useEffect(() => {
+    Sentry.captureException(error)
     try {
       fetch('/api/client-error', {
         method: 'POST',

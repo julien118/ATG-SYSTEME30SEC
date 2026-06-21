@@ -6,6 +6,7 @@
 // Comme app/error.tsx : ecran propre + remontee silencieuse vers /api/client-error.
 
 import { useEffect } from 'react'
+import * as Sentry from '@sentry/nextjs'
 
 export default function GlobalError({
   error,
@@ -15,6 +16,7 @@ export default function GlobalError({
   reset: () => void
 }) {
   useEffect(() => {
+    Sentry.captureException(error)
     try {
       fetch('/api/client-error', {
         method: 'POST',
