@@ -1022,34 +1022,58 @@ function sectionPlate(s: SectionDevis, taxDominant?: string): LignePayload {
   return { type: 'group', description: s.nom, lines }
 }
 
-// Coeur du commit 3 : reconstruit l'arbre du devis depuis le snapshot du modele
-// et les sections validees par Olivier. On parcourt le modele dans son ORDRE
-// (squelette texte + structure) et, a la position de chaque groupe porteur de
-// produits, on emet les sections d'Olivier de cette origine. Les sections
-// ajoutees de zero sont mises a la fin.
+// Coeur du push clonage : reconstruit l'arbre du devis depuis le snapshot du
+// modele et les sections validees par Olivier, en RESPECTANT L'ORDRE QU'OLIVIER A
+// CHOISI dans l'app (sections_finales). Le modele ne fournit plus que (a) le
+// squelette non-porteur de produits (en-tete « qualifications », groupes purement
+// texte, conditions) et (b) le motif de chaque groupe porteur de produits,
+// reutilise par origine pour reinjecter quantites + TVA + sous-titres + prix.
+//
+// Ordre de sortie = PREAMBULE (squelette AVANT le 1er groupe a produits, ordre
+// modele) + SECTIONS d'Olivier DANS L'ORDRE DE L'APP + POSTAMBULE (squelette
+// restant, ordre modele). Pour un devis NON reordonne, l'ordre obtenu est
+// IDENTIQUE a l'ancien (sections_finales est initialement derive dans l'ordre du
+// modele) : aucune regression. Quand Olivier reordonne (fleches / glisser) ou
+// intercale une section ajoutee, l'ordre suit son tableau — y compris a travers
+// les origines (une facade peut passer avant le transversal). On ne pousse jamais
+// un groupe vide (rendu casse chez Olivier).
 export function reconstruireDepuisSnapshot(
   snapshot: { lines?: unknown[] },
   sectionsFinales: SectionDevis[],
 ): LignePayload[] {
   const modeleLines = (snapshot.lines ?? []) as LigneModele[]
   const taxDominant = taxIdModalDuModele(modeleLines)
-  const out: LignePayload[] = []
-  const emisesOrigines = new Set<string>()
+  const ord = ordonner(modeleLines)
 
-  for (const ligne of ordonner(modeleLines)) {
-    if (ligne.type === 'text') {
-      // Squelette : ligne texte racine (en-tete qualifications...). On SAUTE les
-      // lignes VIDES du modele (separateurs) : un devis model:false plante au rendu
-      // chez Olivier si elles sont presentes (c'etait la cause du bug ITE clone).
-      if (!estTexteVide(ligne.description)) {
-        out.push({ type: 'text', description: ligne.description ?? '' })
-      }
-      continue
+  // Motif de scaffolding par origine = 1er groupe-modele porteur de produits de
+  // chaque classe (facade / entete / eco / autre). Reutilise par sectionVersGroupe
+  // pour chaque section d'Olivier de cette origine (les groupes doublons du
+  // modele — ex motif facade repete — sont ignores : seul le 1er sert de motif).
+  const motifParOrigine = new Map<string, LigneModele>()
+  for (const ligne of ord) {
+    if (ligne.type === 'group' && groupeAProduits(ligne)) {
+      const classe = classifierGroupe(ligne)
+      if (!motifParOrigine.has(classe)) motifParOrigine.set(classe, ligne)
     }
-    if (ligne.type === 'product') {
-      // Produit racine (rare) : squelette, on garde la quantite du modele.
+  }
+
+  // Frontiere preambule/postambule : position du 1er groupe porteur de produits.
+  const idxPremierGroupe = ord.findIndex(
+    (l) => l.type === 'group' && groupeAProduits(l),
+  )
+
+  // Emet un element de SQUELETTE (texte racine, groupe purement texte, produit
+  // racine rare). On SAUTE les separateurs texte vides du modele (rendu casse
+  // model:false chez Olivier). Un groupe porteur de produits n'est PAS du
+  // squelette (c'est un emplacement de section) : il est ignore ici.
+  const emettreSquelette = (ligne: LigneModele, sortie: LignePayload[]) => {
+    if (ligne.type === 'text') {
+      if (!estTexteVide(ligne.description)) {
+        sortie.push({ type: 'text', description: ligne.description ?? '' })
+      }
+    } else if (ligne.type === 'product') {
       if (ligne.product?.id) {
-        out.push({
+        sortie.push({
           type: 'product',
           product: ligne.product.id,
           description: ligne.description ?? '',
@@ -1059,34 +1083,34 @@ export function reconstruireDepuisSnapshot(
           ...taxeLigne(ligne),
         })
       }
-      continue
-    }
-    // ligne.type === 'group'
-    if (!groupeAProduits(ligne)) {
-      // Groupe purement texte (qualifications, conditions) : squelette tel quel.
-      out.push(reproduireGroupeTexte(ligne))
-      continue
-    }
-    const classe = classifierGroupe(ligne)
-    if (emisesOrigines.has(classe)) continue // motif deja instancie (doublons)
-    emisesOrigines.add(classe)
-    const sectionsDeCetteOrigine = sectionsFinales.filter(
-      (s) => origineSection(s) === classe,
-    )
-    for (const s of sectionsDeCetteOrigine) {
-      out.push(sectionVersGroupe(s, ligne, classe, taxDominant))
+    } else if (ligne.type === 'group' && !groupeAProduits(ligne)) {
+      sortie.push(reproduireGroupeTexte(ligne))
     }
   }
 
-  // Sections ajoutees de zero par Olivier (aucune ref) : a la fin, a plat.
+  const preambule: LignePayload[] = []
+  const postambule: LignePayload[] = []
+  ord.forEach((ligne, i) => {
+    if (ligne.type === 'group' && groupeAProduits(ligne)) return // emplacement de section
+    if (idxPremierGroupe === -1 || i < idxPremierGroupe) emettreSquelette(ligne, preambule)
+    else emettreSquelette(ligne, postambule)
+  })
+
+  // Sections d'Olivier DANS L'ORDRE DE L'APP. Origine connue + motif present ->
+  // groupe fidele au modele (refs, sous-titres, TVA, prix). Sinon (section ajoutee
+  // de zero, ou origine sans motif) -> groupe a plat. Groupe vide -> non pousse.
+  const milieu: LignePayload[] = []
   for (const s of sectionsFinales) {
-    if (origineSection(s) === null) {
-      const groupe = sectionPlate(s, taxDominant)
-      if (groupe.type === 'group' && groupe.lines.length > 0) out.push(groupe)
-    }
+    const origine = origineSection(s)
+    const motif = origine ? motifParOrigine.get(origine) : undefined
+    const groupe =
+      origine && motif
+        ? sectionVersGroupe(s, motif, origine, taxDominant)
+        : sectionPlate(s, taxDominant)
+    if (groupe.type === 'group' && groupe.lines.length > 0) milieu.push(groupe)
   }
 
-  return out
+  return [...preambule, ...milieu, ...postambule]
 }
 
 // ---------- Push BROUILLON (écriture compte test UNIQUEMENT) ----------

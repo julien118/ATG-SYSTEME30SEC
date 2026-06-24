@@ -10,6 +10,7 @@ import {
   reconstruireDepuisSnapshot,
   sommeProduits,
 } from '../../lib/atg-devis-modele'
+import { deplacerSection } from '../../lib/devis-sections-ordre'
 import type { ArticleDevis, SectionDevis } from '../../lib/types'
 import { aplatir, ko, MODELE_FABRIQUE, occ, ok, qtes, type Resultat } from './utils.mts'
 
@@ -101,6 +102,112 @@ export async function testReconstruction(): Promise<Resultat[]> {
   for (const [nom, cond, det] of checks) {
     res.push(cond ? ok(`A2 ${nom}`) : ko(`A2 ${nom}`, det))
   }
+
+  return res
+}
+
+// A4 - REORDONNANCEMENT HORS-LIGNE : verifie que l'ordre des sections choisi par
+// Olivier dans l'app (ordre du tableau sections_finales) se retrouve dans l'arbre
+// reconstruit AU PUSH — y compris a travers les origines (une facade peut passer
+// avant le transversal) et pour une section ajoutee de zero intercalee au milieu
+// (resout le bug « toujours en fin »). Garde-fous : ordre par defaut = ordre
+// modele (zero regression), en-tete QUALIFICATIONS en preambule, total inchange
+// par un reordonnancement, refs #0/#1 par facade preservees. PUR, aucun reseau.
+export async function testReordonnancement(): Promise<Resultat[]> {
+  const res: Resultat[] = []
+
+  // Derive des sections fraiches + remplit le minimum de quantites pour que chaque
+  // groupe soit non vide (Installation, Facade A, Facade B ; Dechets/Eco = forfaits
+  // deja pre-remplis a la derivation).
+  function preparer(): SectionDevis[] {
+    const s = deriverSectionsDepuisModele(MODELE_FABRIQUE, ['Facade A', 'Facade B'])
+    const set = (nom: string, ref: string, q: number) => {
+      const a = s.find((x) => x.nom === nom)?.articles.find((x) => x.ref_modele === ref)
+      if (a) a.quantite = q
+    }
+    set('Installation', 'entete:prod_ech#0', 200)
+    set('Facade A', 'facade:prod_ite#0', 70)
+    set('Facade B', 'facade:prod_ite#0', 50)
+    return s
+  }
+
+  const reconstruire = (sections: SectionDevis[]) =>
+    aplatir(reconstruireDepuisSnapshot({ lines: MODELE_FABRIQUE }, sections) as any[])
+  const ordreGroupes = (sections: SectionDevis[]) => reconstruire(sections).groupes
+
+  const base = preparer()
+  const attenduBase = ['installation', 'facade a', 'facade b', 'dechets', 'eco-contribution']
+
+  // 1) Ordre par defaut (aucun reordonnancement) = ordre du modele : ZERO regression.
+  const gBase = ordreGroupes(base)
+  res.push(
+    JSON.stringify(gBase) === JSON.stringify(attenduBase)
+      ? ok('A4 ordre par defaut = ordre modele (non regression)')
+      : ko('A4 ordre par defaut', `obtenu ${gBase.join(' | ')}`),
+  )
+
+  // 2) En-tete QUALIFICATIONS en preambule (1er texte, avant tout groupe).
+  const t0 = reconstruire(base).textes[0] ?? ''
+  res.push(
+    t0.includes('qualifications')
+      ? ok('A4 en-tete QUALIFICATIONS en preambule')
+      : ko('A4 en-tete QUALIFICATIONS en preambule', `textes[0]=${t0}`),
+  )
+
+  // 3) Reorganisation INTRA-origine : Facade B remontee avant Facade A.
+  const gIntra = ordreGroupes(deplacerSection(base, 2, 1))
+  res.push(
+    gIntra.indexOf('facade b') < gIntra.indexOf('facade a') && gIntra[0] === 'installation'
+      ? ok('A4 reorg intra-origine (Facade B avant Facade A)')
+      : ko('A4 reorg intra-origine', gIntra.join(' | ')),
+  )
+  // refs #0/#1 par facade preservees apres reorg : les 2 ITE gardent leurs qtes.
+  const itesIntra = qtes(reconstruire(deplacerSection(base, 2, 1)), 'prod_ite').slice().sort((a, b) => a - b)
+  res.push(
+    JSON.stringify(itesIntra) === JSON.stringify([50, 70])
+      ? ok('A4 refs facade preservees apres reorg (ITE 50 & 70)')
+      : ko('A4 refs facade preservees apres reorg', `ites=${itesIntra}`),
+  )
+
+  // 4) Reorganisation INTER-origine : Dechets remonte tout en tete (avant Installation).
+  const gInter = ordreGroupes(deplacerSection(base, 3, 0))
+  res.push(
+    gInter[0] === 'dechets' && gInter.indexOf('dechets') < gInter.indexOf('installation')
+      ? ok('A4 reorg inter-origine (Dechets avant Installation)')
+      : ko('A4 reorg inter-origine', gInter.join(' | ')),
+  )
+
+  // 5) Section AJOUTEE de zero intercalee au MILIEU (bug « toujours en fin » resolu).
+  const nouvelle: SectionDevis = {
+    nom: 'Section ajoutee',
+    articles: [
+      { costructor_article_id: 'prod_new', libelle: 'Poste sur mesure', unite: 'u', prix_vente: 100, quantite: 3, description_technique: '' },
+    ],
+  }
+  const intercalee = [...base.slice(0, 2), nouvelle, ...base.slice(2)]
+  const gInter2 = ordreGroupes(intercalee)
+  res.push(
+    gInter2[2] === 'section ajoutee'
+      ? ok('A4 section ajoutee intercalee au milieu (plus « en fin »)')
+      : ko('A4 section ajoutee intercalee', gInter2.join(' | ')),
+  )
+
+  // 6) Total INCHANGE par un reordonnancement (les montants ne dependent pas de l'ordre).
+  const tBase = sommeProduits(reconstruireDepuisSnapshot({ lines: MODELE_FABRIQUE }, base))
+  const tReord = sommeProduits(reconstruireDepuisSnapshot({ lines: MODELE_FABRIQUE }, deplacerSection(base, 3, 0)))
+  res.push(
+    tBase > 0 && tBase === tReord
+      ? ok('A4 total inchange par reordonnancement', `${(tBase / 100).toFixed(2)} €`)
+      : ko('A4 total inchange par reordonnancement', `base=${tBase} reord=${tReord}`),
+  )
+
+  // 7) deplacerSection : bornes & no-op (meme reference si pas de mouvement valide).
+  const noOp =
+    deplacerSection(base, 0, 0) === base &&
+    deplacerSection(base, -1, 2) === base &&
+    deplacerSection(base, 0, 99) === base &&
+    deplacerSection(base, 1, 2) !== base
+  res.push(noOp ? ok('A4 deplacerSection bornes/no-op') : ko('A4 deplacerSection bornes/no-op'))
 
   return res
 }

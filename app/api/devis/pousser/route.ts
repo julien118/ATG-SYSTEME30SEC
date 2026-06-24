@@ -152,7 +152,9 @@ export async function POST(request: Request) {
           preVisitAt,
         })
       } else {
-        // Moteur plat (ravalement + devis existants) : STRICTEMENT inchange.
+        // Moteur plat (filet : aucun modele ne correspond). Point 1 : on respecte
+        // l'ORDRE des sections choisi par Olivier (un groupe par section, dans
+        // l'ordre du tableau), au lieu d'imposer la structure ATG transversale.
         const payload = construirePayloadDevis({
           contactId,
           sections,
@@ -160,6 +162,7 @@ export async function POST(request: Request) {
           tvaTaux,
           name,
           preVisitAt,
+          respecterOrdreSections: true,
         })
         resp = await pousserDevis(payload)
       }

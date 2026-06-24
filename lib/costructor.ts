@@ -601,6 +601,11 @@ export function construirePayloadDevis(args: {
   // Nom/titre parlant du devis (lot 6.1) et date de visite prealable (lot 6.2).
   name?: string
   preVisitAt?: string
+  // Point 1 (ordre des sections) : quand true, on emet UN groupe par section dans
+  // l'ORDRE DU TABLEAU (= l'ordre choisi par Olivier), sans extraire les libelles
+  // transversaux en tete. Defaut false = structure ATG historique (transversales
+  // d'abord). Le clonage etant generalise, le plat n'est plus qu'un filet rare.
+  respecterOrdreSections?: boolean
 }): CostructorQuotePayload {
   const lines: CostructorQuotePayload['lines'] = []
   const tvaTaux = args.tvaTaux ?? 10
@@ -616,48 +621,64 @@ export function construirePayloadDevis(args: {
     lines.push({ type: 'text', description: enteteHtml })
   }
 
-  // 2) Pré-classification des articles : pour chaque article (avec quantité),
-  // détermine s'il va dans une section transversale ou dans sa section façade.
-  // On garde la référence d'origine pour conserver l'ordre interne par façade.
-  const articlesValides = args.sections.flatMap((s) =>
-    s.articles
-      .filter((a) => a.quantite != null && a.quantite > 0)
-      .map((article) => ({
-        article,
-        sectionOrigine: s.nom,
-        sectionTransversale: trouverSectionTransversale(article.libelle),
-      })),
-  )
-
-  // 3) Sections transversales : UN groupe par section NON VIDE (produits
-  // imbriques), dans l'ordre declare. On n'emet plus de titre orphelin pour une
-  // section transversale sans article (qui deviendrait un groupe vide).
-  for (const transv of STRUCTURE_DEVIS_ATG.sectionsTransversales) {
-    const captures = articlesValides.filter(
-      (a) => a.sectionTransversale === transv.titre,
+  if (args.respecterOrdreSections) {
+    // Ordre app (point 1) : UN groupe par section DANS L'ORDRE DU TABLEAU. Les
+    // libelles transversaux restent dans leur section (pas d'extraction globale en
+    // tete) ; ainsi l'ordre qu'Olivier a choisi se retrouve fidelement. Articles
+    // sans quantite skippes ; section vide apres filtrage non emise (pas d'orphelin).
+    for (const section of args.sections) {
+      const arts = section.articles.filter((a) => a.quantite != null && a.quantite > 0)
+      if (arts.length === 0) continue
+      lines.push({
+        type: 'group',
+        description: section.nom,
+        lines: arts.map((a) => ligneProduit(a, taxRate)),
+      })
+    }
+  } else {
+    // 2) Pré-classification des articles : pour chaque article (avec quantité),
+    // détermine s'il va dans une section transversale ou dans sa section façade.
+    // On garde la référence d'origine pour conserver l'ordre interne par façade.
+    const articlesValides = args.sections.flatMap((s) =>
+      s.articles
+        .filter((a) => a.quantite != null && a.quantite > 0)
+        .map((article) => ({
+          article,
+          sectionOrigine: s.nom,
+          sectionTransversale: trouverSectionTransversale(article.libelle),
+        })),
     )
-    if (captures.length === 0) continue
-    lines.push({
-      type: 'group',
-      description: transv.titre,
-      lines: captures.map(({ article }) => ligneProduit(article, taxRate)),
-    })
-  }
 
-  // 4) Sections façade restantes : UN groupe par section, dans l'ordre d'origine,
-  // avec les articles non captes par une section transversale. Une section vide
-  // apres filtrage n'est PAS emise (pas de groupe orphelin).
-  for (const section of args.sections) {
-    const restants = articlesValides.filter(
-      (a) =>
-        a.sectionOrigine === section.nom && a.sectionTransversale === null,
-    )
-    if (restants.length === 0) continue
-    lines.push({
-      type: 'group',
-      description: section.nom,
-      lines: restants.map(({ article }) => ligneProduit(article, taxRate)),
-    })
+    // 3) Sections transversales : UN groupe par section NON VIDE (produits
+    // imbriques), dans l'ordre declare. On n'emet plus de titre orphelin pour une
+    // section transversale sans article (qui deviendrait un groupe vide).
+    for (const transv of STRUCTURE_DEVIS_ATG.sectionsTransversales) {
+      const captures = articlesValides.filter(
+        (a) => a.sectionTransversale === transv.titre,
+      )
+      if (captures.length === 0) continue
+      lines.push({
+        type: 'group',
+        description: transv.titre,
+        lines: captures.map(({ article }) => ligneProduit(article, taxRate)),
+      })
+    }
+
+    // 4) Sections façade restantes : UN groupe par section, dans l'ordre d'origine,
+    // avec les articles non captes par une section transversale. Une section vide
+    // apres filtrage n'est PAS emise (pas de groupe orphelin).
+    for (const section of args.sections) {
+      const restants = articlesValides.filter(
+        (a) =>
+          a.sectionOrigine === section.nom && a.sectionTransversale === null,
+      )
+      if (restants.length === 0) continue
+      lines.push({
+        type: 'group',
+        description: section.nom,
+        lines: restants.map(({ article }) => ligneProduit(article, taxRate)),
+      })
+    }
   }
 
   return {

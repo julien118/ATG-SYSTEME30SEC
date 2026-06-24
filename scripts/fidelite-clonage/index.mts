@@ -13,10 +13,11 @@
 // la cle Olivier.
 
 import { testRouting } from './routing.mts'
-import { testReconstruction } from './reconstruction.mts'
+import { testReconstruction, testReordonnancement } from './reconstruction.mts'
 import { testGardes } from './gardes.mts'
 import { testFideliteModele } from './fidelite-modele.mts'
 import { testE2eReinjection } from './e2e-reinjection.mts'
+import { testE2eOrdre } from './e2e-ordre.mts'
 import { testForfaitsFixes } from './forfaits-fixes.mts'
 import { ko, type Resultat } from './utils.mts'
 
@@ -38,9 +39,11 @@ function precheckSecurite(): boolean {
 const FAMILLES: Array<{ nom: string; run: () => Promise<Resultat[]> }> = [
   { nom: 'A1 routing (pur)', run: testRouting },
   { nom: 'A2 reconstruction (hors-ligne)', run: testReconstruction },
+  { nom: 'A4 reordonnancement (hors-ligne)', run: testReordonnancement },
   { nom: 'A3 gardes de securite (pur)', run: testGardes },
   { nom: 'B1 fidelite modele (GET only)', run: testFideliteModele },
   { nom: 'C1 e2e reinjection (compte test)', run: testE2eReinjection },
+  { nom: 'C3 e2e ordre des sections (compte test)', run: testE2eOrdre },
   { nom: 'C2 forfaits fixes (compte test)', run: testForfaitsFixes },
 ]
 

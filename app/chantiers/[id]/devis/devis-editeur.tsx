@@ -15,6 +15,7 @@ import { useToast } from '@/components/ToastProvider'
 import Spinner from '@/components/Spinner'
 import { decoderEntitesHtml } from '@/lib/html-entites'
 import { fetchWithTimeout } from '@/lib/utils'
+import { deplacerSection } from '@/lib/devis-sections-ordre'
 import type { ArticleDevis, ArticleRemplacable, SectionDevis } from '@/lib/types'
 
 // Normalisation pour la recherche d'article : minuscules, accents retires.
@@ -109,6 +110,14 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
     { sIdx: number; nom: string } | null
   >(null)
   const [suppressionSection, setSuppressionSection] = useState(false)
+  // Reordonnancement des sections (point 1) : verrou de persistance + suivi du
+  // glisser-deposer. L'origine du glisser est en REF (aucun re-rendu pendant le
+  // geste) ; la cible survolee est en STATE (retour visuel). L'ordre = ordre du
+  // tableau ; reordonner = deplacer + persister (meme patron save+rollback). Deux
+  // gestes : fleches ▲▼ (fiable au doigt) ET glisser-deposer (pour le reflexe).
+  const [reordEnCours, setReordEnCours] = useState(false)
+  const dragFromRef = useRef<number | null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -851,6 +860,98 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
     }
   }
 
+  // ---------- Phase A : reordonnancement des sections (point 1) ----------
+
+  // Deplace une section a une nouvelle position (fleches ▲▼ ou glisser-deposer),
+  // puis persiste l'ordre via la route metres-vocaux (mode save) avec rollback si
+  // l'enregistrement echoue — meme patron que le renommage / la suppression.
+  // L'ordre des sections (= ordre du tableau) se retrouve fidelement dans le devis
+  // pousse (cf. reconstruireDepuisSnapshot / construirePayloadDevis cote serveur).
+  async function reordonnerSections(from: number, to: number) {
+    if (reordEnCours) return
+    const sectionsMaj = deplacerSection(sections, from, to)
+    if (sectionsMaj === sections) return // no-op (bornes / pas de mouvement)
+    // Operation structurelle : les index bougent, on ferme edition/recherche/renommage.
+    setEditingKey(null)
+    setRechercheKey(null)
+    annulerEditionSection()
+    // Recale le drapeau « section nouvelle non confirmee » sur sa nouvelle position.
+    setSectionNouvelleIdx((prev) => {
+      if (prev == null) return null
+      if (prev === from) return to
+      if (from < prev && to >= prev) return prev - 1
+      if (from > prev && to <= prev) return prev + 1
+      return prev
+    })
+    // Sauvegarde explicite : on annule un auto-save en attente ; c'est une vraie modif.
+    annulerAutoSave()
+    aModifieRef.current = true
+    setReordEnCours(true)
+    const precedentes = sections
+    setSections(sectionsMaj)
+    sectionsRef.current = sectionsMaj
+    try {
+      const fd = new FormData()
+      fd.append('devisId', devisId)
+      fd.append('sections', JSON.stringify(sectionsMaj))
+      const res = await fetch('/api/devis/metres-vocaux', { method: 'POST', body: fd })
+      if (!res.ok) {
+        const t = await res.text()
+        throw new Error(t || `Erreur ${res.status}`)
+      }
+    } catch (e) {
+      // Rollback : on restaure l'ordre d'avant si la persistance a echoue.
+      setSections(precedentes)
+      sectionsRef.current = precedentes
+      toast.show((e as Error).message ?? 'Échec du déplacement', 'error')
+    } finally {
+      setReordEnCours(false)
+    }
+  }
+
+  const monterSection = (sIdx: number) => void reordonnerSections(sIdx, sIdx - 1)
+  const descendreSection = (sIdx: number) => void reordonnerSections(sIdx, sIdx + 1)
+
+  // Glisser-deposer d'une section via la poignee (Pointer Events : souris ET
+  // tactile, sans dependance). On capture le pointeur sur la poignee pour suivre le
+  // doigt meme hors de la poignee ; la section survolee est lue par elementFromPoint
+  // (attribut data-section-idx). Le reordonnancement effectif n'a lieu qu'au DEPOSE
+  // (aucun setSections pendant le geste : pas de remontage, glisser fluide).
+  function demarrerGlisser(e: React.PointerEvent, sIdx: number) {
+    if (reordEnCours || sections.length < 2) return
+    dragFromRef.current = sIdx
+    setDragOverIdx(sIdx)
+    setEditingKey(null)
+    setRechercheKey(null)
+    try {
+      ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
+    } catch {
+      /* setPointerCapture non supporte : glisser degrade, les fleches restent. */
+    }
+  }
+
+  function survolerGlisser(e: React.PointerEvent) {
+    if (dragFromRef.current == null) return
+    const el = document.elementFromPoint(e.clientX, e.clientY)
+    const sec = el?.closest('[data-section-idx]') as HTMLElement | null
+    if (!sec) return
+    const idx = Number(sec.dataset.sectionIdx)
+    if (!Number.isNaN(idx)) setDragOverIdx(idx)
+  }
+
+  function deposerGlisser(e: React.PointerEvent) {
+    const from = dragFromRef.current
+    const to = dragOverIdx
+    dragFromRef.current = null
+    setDragOverIdx(null)
+    try {
+      ;(e.currentTarget as Element).releasePointerCapture(e.pointerId)
+    } catch {
+      /* ignore */
+    }
+    if (from != null && to != null && from !== to) void reordonnerSections(from, to)
+  }
+
   if (phase === 'technique') {
     const totalArticles = sections.reduce((acc, s) => acc + s.articles.length, 0)
     return (
@@ -947,7 +1048,12 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
           {sections.map((s, sIdx) => (
             <section
               key={`${s.nom}-${sIdx}`}
-              className="mb-5 rounded-2xl border border-border bg-white p-4"
+              data-section-idx={sIdx}
+              className={`mb-5 rounded-2xl border bg-white p-4 transition-shadow ${
+                dragOverIdx === sIdx
+                  ? 'border-primary ring-2 ring-primary/40'
+                  : 'border-border'
+              }`}
             >
               {/* En-tete de section : titre + renommage inline (commit 1). */}
               {editSectionIdx === sIdx ? (
@@ -981,11 +1087,59 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                   </div>
                 </div>
               ) : (
-                <div className="mb-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
-                  <h2 className="text-sm font-bold uppercase tracking-wide text-primary">
-                    {s.nom}
-                  </h2>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:shrink-0 sm:gap-3">
+                <div className="mb-3">
+                  {/* Ligne 1 : titre + GROS boutons de déplacement (pensés tactile :
+                      cibles 44 px, fond + bordure, bien séparés). Le glisser-déposer
+                      (poignée) est réservé à l'ordinateur — au doigt il est fragile,
+                      les flèches sont le geste fiable sur téléphone. */}
+                  <div className="flex items-center gap-2">
+                    {sections.length > 1 && (
+                      <button
+                        type="button"
+                        aria-label="Glisser pour déplacer la section"
+                        title="Glisser pour déplacer"
+                        disabled={reordEnCours}
+                        onPointerDown={(e) => demarrerGlisser(e, sIdx)}
+                        onPointerMove={survolerGlisser}
+                        onPointerUp={deposerGlisser}
+                        style={{ touchAction: 'none' }}
+                        className="hidden sm:flex h-10 w-7 shrink-0 items-center justify-center text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing disabled:opacity-40"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <circle cx="9" cy="6" r="1.7" /><circle cx="15" cy="6" r="1.7" />
+                          <circle cx="9" cy="12" r="1.7" /><circle cx="15" cy="12" r="1.7" />
+                          <circle cx="9" cy="18" r="1.7" /><circle cx="15" cy="18" r="1.7" />
+                        </svg>
+                      </button>
+                    )}
+                    <h2 className="flex-1 min-w-0 truncate text-sm font-bold uppercase tracking-wide text-primary">
+                      {s.nom}
+                    </h2>
+                    {sections.length > 1 && (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          aria-label="Monter la section"
+                          disabled={sIdx === 0 || reordEnCours}
+                          onClick={() => monterSection(sIdx)}
+                          className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-gray-50 text-gray-700 active:bg-gray-200 disabled:opacity-30 disabled:active:bg-gray-50"
+                        >
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Descendre la section"
+                          disabled={sIdx === sections.length - 1 || reordEnCours}
+                          onClick={() => descendreSection(sIdx)}
+                          className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-gray-50 text-gray-700 active:bg-gray-200 disabled:opacity-30 disabled:active:bg-gray-50"
+                        >
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {/* Ligne 2 : renommer / supprimer (séparées des contrôles d'ordre). */}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
                     <button
                       type="button"
                       onClick={() => ouvrirEditionSection(sIdx, s.nom)}
