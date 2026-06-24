@@ -73,6 +73,41 @@ export interface Rapport {
 }
 
 // =============================================================
+// Tickets support Olivier -> Julien (canal Telegram)
+// =============================================================
+
+export type TicketStatut = 'ouvert' | 'repondu'
+
+// Contexte auto-capture a l'envoi (cote client) + enrichi cote serveur
+// (chantierLabel resolu depuis chantiers.client_nom). Stocke en JSONB.
+export interface TicketContexte {
+  path?: string
+  chantierId?: string
+  chantierLabel?: string
+  viewport?: string
+  userAgent?: string
+}
+
+export interface Ticket {
+  id: string
+  created_at: string
+  user_id: string
+  chantier_id: string | null
+  message: string
+  contexte: TicketContexte
+  statut: TicketStatut
+  reponse: string | null
+  repondu_le: string | null
+  // bigint cote Postgres -> number cote JS (sur : message_id Telegram << 2^53).
+  telegram_message_id: number | null
+  lu_par_olivier: boolean
+}
+
+// Forme renvoyee par GET /api/tickets au navigateur : on n'expose ni le
+// message_id Telegram ni l'user_id (inutiles cote client, plus propre).
+export type TicketPublic = Omit<Ticket, 'telegram_message_id' | 'user_id'>
+
+// =============================================================
 // Phase 2 — Module Devis Express ATG
 // =============================================================
 

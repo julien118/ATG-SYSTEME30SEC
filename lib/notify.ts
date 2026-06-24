@@ -60,6 +60,43 @@ export async function sendTelegram(text: string): Promise<void> {
 }
 
 /**
+ * Variante de sendTelegram qui RENVOIE le message_id du message poste (pour
+ * matcher ensuite les reponses de Julien via reply_to_message). Renvoie null si
+ * non configure, si l'envoi echoue, ou si la reponse n'a pas la forme attendue
+ * ({ ok:true, result:{ message_id } }). Best-effort : ne throw JAMAIS (l'appelant
+ * — creation de ticket — ne doit pas casser si Telegram est indisponible ; il
+ * tient compte du null pour prevenir Olivier).
+ */
+export async function sendTelegramAvecId(text: string): Promise<number | null> {
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim()
+  const chatId = process.env.TELEGRAM_CHAT_ID?.trim()
+  if (!token || !chatId) return null
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_ENVOI_MS)
+  try {
+    const res = await fetch(`${TELEGRAM_API}/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      }),
+      signal: controller.signal,
+      cache: 'no-store',
+    })
+    const data = await res.json().catch(() => null)
+    const id = data?.result?.message_id
+    return typeof id === 'number' ? id : null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
  * Webhook generique optionnel (n8n / Slack / Discord). No-op si ALERT_WEBHOOK_URL
  * n'est pas defini. Le corps porte `text` (Slack), `content` (Discord) + meta.
  */

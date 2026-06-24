@@ -14,6 +14,9 @@ import { cibleInterneSure } from '@/lib/redirection-sure'
 //    Ces routes restent protégées par leur PROPRE vérification de CRON_SECRET.
 //  - /api/client-error : volontairement public (remontée des crashs navigateur,
 //    même hors session, ex. écran de login). N'expose rien, répond toujours ok.
+//  - /api/telegram-webhook : appelée par Telegram (réponses de Julien aux tickets),
+//    qui n'a pas le cookie de session. Protégée par son PROPRE secret token
+//    (x-telegram-bot-api-secret-token vérifié dans le handler).
 // (les assets statiques sont déjà exclus par le `matcher` ci-dessous)
 function estPublique(pathname: string): boolean {
   return (
@@ -24,7 +27,8 @@ function estPublique(pathname: string): boolean {
     pathname === '/api/cron' ||
     pathname === '/api/usage-digest' ||
     pathname === '/api/model-health' ||
-    pathname === '/api/client-error'
+    pathname === '/api/client-error' ||
+    pathname === '/api/telegram-webhook'
   )
 }
 
