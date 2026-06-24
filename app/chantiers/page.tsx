@@ -62,10 +62,14 @@ export default async function ChantiersPage() {
         <LogoLink width={110} height={26} />
         <div className="flex items-center gap-3">
           <AssistantTicket />
-          <span className="text-sm text-gray-200">
-            {safeProfile.prenom} {safeProfile.nom}
-          </span>
-          <LogoutButton />
+          {/* Nom + déconnexion : masqués sur téléphone (gain de place), visibles
+              sur ordinateur (sm:). Le bouton « ? » reste visible partout. */}
+          <div className="hidden sm:flex items-center gap-3">
+            <span className="text-sm text-gray-200">
+              {safeProfile.prenom} {safeProfile.nom}
+            </span>
+            <LogoutButton />
+          </div>
         </div>
       </header>
 
