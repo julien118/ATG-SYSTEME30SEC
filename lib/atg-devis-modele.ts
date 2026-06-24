@@ -63,16 +63,29 @@ export interface LigneModele {
   // materiaux). On lit ces champs BRUTS du snapshot pour les recopier au push, afin
   // que Costructor recree l'ouvrage et calcule temps chantier + rentabilite.
   productType?: string | null
+  // sellPriceForced : si true, le prix de vente est IMPOSE et Costructor NE calcule
+  // PAS le deboursé depuis les supplies (-> rentabilite cassee). On recopie l'etat
+  // du modele (false pour les vrais ouvrages) pour que le deboursé se calcule.
+  sellPriceForced?: boolean | null
   buyPrice?: number | null
   source?: string | null
   sourceId?: string | null
   reference?: string | null
   persist?: boolean | null
   supplies?: Array<{
-    // L'element (main d'œuvre / materiau) porte ses tarifs : buyPrice = deboursé
-    // (PA.U HT), sellPrice = prix de vente (Prix U HT). C'est ce qui alimente le
-    // temps chantier chiffré + la rentabilite cote editeur Costructor.
-    element?: { id?: string; buyPrice?: number | null; sellPrice?: number | null } | null
+    // L'element (main d'œuvre / materiau) est un OBJET portant son libellé (name),
+    // sa nature (type: workforce/material...), son unité et ses tarifs : buyPrice =
+    // deboursé (PA.U HT), sellPrice = prix de vente (Prix U HT). On le recopie TEL
+    // QUEL (objet) au push : c'est ce qui fait apparaitre « Main d'œuvre » et
+    // alimente le temps chantier chiffré + la rentabilite cote editeur Costructor.
+    element?: {
+      id?: string
+      name?: string | null
+      type?: string | null
+      unit?: string | null
+      buyPrice?: number | null
+      sellPrice?: number | null
+    } | null
     quantity?: number | null
     position?: number | null
     lockSellPrice?: boolean | null
@@ -81,20 +94,24 @@ export interface LigneModele {
 }
 
 // Champs d'ouvrage recopies sur une ligne du payload (sous-ensemble de la variante
-// produit de LignePayload). Forme des supplies VALIDEE PAR LE SPIKE : on envoie
-// { element:<id>, quantity (cadence/conso par unité), position, lockSellPrice } +
-// buyPrice (PA.U HT, deboursé) / sellPrice (Prix U HT) de la supply (les id/key sont
-// generes par le serveur). persist:false comme l'UI = cle de la non-corruption a la
-// reouverture. Sans buyPrice/sellPrice la main d'œuvre ressort sans prix (spike v1).
+// produit de LignePayload). Forme VALIDEE PAR LE SPIKE (compte test, comparaison a
+// D-2026-00195) :
+//  - sellPriceForced: false  -> sinon « ouvrage forcé » : Costructor n'agrege PAS le
+//    deboursé des supplies dans la rentabilite (deboursé = 0, rentabilite cassee).
+//  - supplies[].element = OBJET { id, name, type, unit, buyPrice, sellPrice }  -> fait
+//    apparaitre « Main d'œuvre » dans la designation ET compte le deboursé. Un simple
+//    id (string) laisse le libellé vide et n'est pas pris en compte (bug constate).
+//  - persist:false comme l'UI = cle de la non-corruption a la reouverture.
+// En recopiant les supplies (tarifs reels d'Olivier), Costructor RE-CALCULE le prix de
+// vente = exactement celui d'Olivier (verifie 20/21 ouvrages), et le deboursé/temps.
 export interface ChampsOuvrage {
   productType?: string
+  sellPriceForced?: boolean
   supplies?: Array<{
-    element: string
+    element: { id: string; name?: string; type?: string; unit?: string; buyPrice?: number; sellPrice?: number }
     quantity: number
     position: number
     lockSellPrice: boolean
-    buyPrice?: number
-    sellPrice?: number
   }>
   buyPrice?: number
   source?: string
@@ -452,24 +469,31 @@ function taxeLigne(l: LigneModele): { tax?: string; taxRate?: number } {
 function champsOuvrage(l: LigneModele): ChampsOuvrage {
   if (l.productType !== 'work' && l.productType !== 'work_detailed') return {}
   const supplies = (l.supplies ?? [])
-    .map((s) =>
-      s?.element?.id
-        ? {
-            element: s.element.id,
-            quantity: typeof s.quantity === 'number' ? s.quantity : 0,
-            position: s.position ?? 0,
-            lockSellPrice: !!s.lockSellPrice,
-            // Tarifs de la supply (main d'œuvre / materiau) : PA.U HT (deboursé) +
-            // Prix U HT. Indispensables pour que la ligne main d'œuvre ressorte
-            // chiffrée et que la rentabilite se calcule (spike v2/v3).
-            ...(typeof s.element.buyPrice === 'number' ? { buyPrice: s.element.buyPrice } : {}),
-            ...(typeof s.element.sellPrice === 'number' ? { sellPrice: s.element.sellPrice } : {}),
-          }
-        : null,
-    )
+    .map((s) => {
+      const el = s?.element
+      if (!el?.id) return null
+      // element = OBJET tel quel (id + libellé + nature + unité + tarifs). C'est ce
+      // qui fait apparaitre « Main d'œuvre » et compte le deboursé/temps chantier.
+      return {
+        element: {
+          id: el.id,
+          ...(el.name != null ? { name: el.name } : {}),
+          ...(el.type != null ? { type: el.type } : {}),
+          ...(el.unit != null ? { unit: el.unit } : {}),
+          ...(typeof el.buyPrice === 'number' ? { buyPrice: el.buyPrice } : {}),
+          ...(typeof el.sellPrice === 'number' ? { sellPrice: el.sellPrice } : {}),
+        },
+        quantity: typeof s.quantity === 'number' ? s.quantity : 0,
+        position: s.position ?? 0,
+        lockSellPrice: !!s.lockSellPrice,
+      }
+    })
     .filter((s): s is NonNullable<typeof s> => s !== null)
   return {
     productType: l.productType,
+    // On recopie l'etat du modele (false pour les vrais ouvrages) : si on forcait le
+    // prix, Costructor n'agregerait pas le deboursé des supplies -> rentabilite cassee.
+    sellPriceForced: l.sellPriceForced === true,
     ...(supplies.length > 0 ? { supplies } : {}),
     ...(typeof l.buyPrice === 'number' ? { buyPrice: l.buyPrice } : {}),
     ...(l.source ? { source: l.source } : {}),

@@ -26,7 +26,7 @@ function modeleAvecOuvrage(): any[] {
           unit: { id: 'unit_m2', symbol: 'm²' }, tax: { id: 'tx_10' },
           product: { id: 'prod_ite', name: 'ITE' },
           // --- nature OUVRAGE ---
-          productType: 'work_detailed', buyPrice: 9000, source: 'batiprix', reference: 'REF1',
+          productType: 'work_detailed', sellPriceForced: false, buyPrice: 9000, source: 'batiprix', reference: 'REF1',
           supplies: [
             { id: 'pe_serveur', key: 'k_serveur', position: 0, quantity: 0.8, lockSellPrice: false,
               element: { id: 'prod_mo', name: "Main d'oeuvre", type: 'workforce', buyPrice: 4500, sellPrice: 6500 } },
@@ -64,27 +64,29 @@ export async function testOuvrages(): Promise<Resultat[]> {
       ? ok('A5 ouvrage : productType "work_detailed" preserve')
       : ko('A5 ouvrage : productType preserve', JSON.stringify(ouvrage?.productType)),
   )
+  const sup0 = ouvrage?.supplies?.[0]
   res.push(
     Array.isArray(ouvrage?.supplies) && ouvrage.supplies.length === 1 &&
-      ouvrage.supplies[0].element === 'prod_mo' && ouvrage.supplies[0].quantity === 0.8 &&
-      ouvrage.supplies[0].lockSellPrice === false &&
-      ouvrage.supplies[0].buyPrice === 4500 && ouvrage.supplies[0].sellPrice === 6500 &&
-      !('id' in ouvrage.supplies[0]) && !('key' in ouvrage.supplies[0])
-      ? ok('A5 ouvrage : supplies (cadence 0.8 + PA.U 45€/Prix U 65€, sans id/key serveur)')
+      sup0.element?.id === 'prod_mo' && sup0.element?.name === "Main d'oeuvre" &&
+      sup0.element?.type === 'workforce' &&
+      sup0.element?.buyPrice === 4500 && sup0.element?.sellPrice === 6500 &&
+      sup0.quantity === 0.8 && sup0.lockSellPrice === false &&
+      !('id' in sup0) && !('key' in sup0)
+      ? ok('A5 ouvrage : supply = element OBJET (Main d\'oeuvre/workforce, PA.U 45€/Prix U 65€) + cadence 0.8')
       : ko('A5 ouvrage : supplies', JSON.stringify(ouvrage?.supplies)),
   )
   res.push(
     ouvrage?.buyPrice === 9000 ? ok('A5 ouvrage : buyPrice (déboursé 90€) preserve') : ko('A5 ouvrage : buyPrice', JSON.stringify(ouvrage?.buyPrice)),
   )
   res.push(
-    ouvrage?.source === 'batiprix' && ouvrage?.persist === false
-      ? ok('A5 ouvrage : source + persist:false comme l\'UI')
-      : ko('A5 ouvrage : source/persist', JSON.stringify({ source: ouvrage?.source, persist: ouvrage?.persist })),
+    ouvrage?.source === 'batiprix' && ouvrage?.persist === false && ouvrage?.sellPriceForced === false
+      ? ok('A5 ouvrage : source + persist:false + sellPriceForced:false (deboursé/rentabilite OK)')
+      : ko('A5 ouvrage : source/persist/forced', JSON.stringify({ source: ouvrage?.source, persist: ouvrage?.persist, forced: ouvrage?.sellPriceForced })),
   )
   res.push(
-    plat && plat.productType === undefined && plat.supplies === undefined && plat.buyPrice === undefined
+    plat && plat.productType === undefined && plat.supplies === undefined && plat.buyPrice === undefined && plat.sellPriceForced === undefined
       ? ok('A5 ligne plate : aucun champ ouvrage (non-regression)')
-      : ko('A5 ligne plate non-regression', JSON.stringify({ pt: plat?.productType, sup: plat?.supplies, bp: plat?.buyPrice })),
+      : ko('A5 ligne plate non-regression', JSON.stringify({ pt: plat?.productType, sup: plat?.supplies, bp: plat?.buyPrice, f: plat?.sellPriceForced })),
   )
   return res
 }
