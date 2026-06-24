@@ -19,12 +19,6 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Le binaire ffmpeg (transcode des vocaux de tickets -> OGG/OPUS pour un vrai
-  // message vocal Telegram) doit être inclus dans le bundle de /api/tickets,
-  // sinon spawn ne le trouve pas en prod. (Top-level depuis Next 14.2.)
-  outputFileTracingIncludes: {
-    '/api/tickets': ['./node_modules/ffmpeg-static/ffmpeg'],
-  },
   images: {
     remotePatterns: [
       {

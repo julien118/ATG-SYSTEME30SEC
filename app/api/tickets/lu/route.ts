@@ -14,14 +14,20 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const body = (await request.json().catch(() => ({}))) as { id?: unknown }
+    const id = typeof body.id === 'string' ? body.id : null
     const admin = createAdminClient()
-    await admin
+    let q = admin
       .from('tickets')
       .update({ lu_par_olivier: true })
       .eq('user_id', ATG_USER_ID)
       .eq('lu_par_olivier', false)
+    // Avec un id : on marque ce fil précis lu (à l'ouverture de la conversation) ;
+    // sans id : on marque tout lu (ouverture de la liste).
+    if (id) q = q.eq('id', id)
+    await q
     return NextResponse.json({ ok: true })
   } catch (e) {
     console.error('[api/tickets/lu POST]', e)

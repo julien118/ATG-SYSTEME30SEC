@@ -76,7 +76,8 @@ export interface Rapport {
 // Tickets support Olivier -> Julien (canal Telegram)
 // =============================================================
 
-export type TicketStatut = 'ouvert' | 'repondu'
+// 'ouvert' = fil actif | 'resolu' = clos (archivé, toujours consultable).
+export type TicketStatut = 'ouvert' | 'resolu'
 
 // Contexte auto-capture a l'envoi (cote client) + enrichi cote serveur
 // (chantierLabel resolu depuis chantiers.client_nom). Stocke en JSONB.
@@ -88,26 +89,56 @@ export interface TicketContexte {
   userAgent?: string
 }
 
+// Un message dans un fil de discussion (table ticket_messages).
+export interface TicketMessage {
+  id: string
+  auteur: 'olivier' | 'julien'
+  texte: string
+  created_at: string
+}
+
 export interface Ticket {
   id: string
   created_at: string
   user_id: string
   chantier_id: string | null
-  message: string
+  message: string // message d'ouverture (legacy ; le fil vit dans ticket_messages)
   contexte: TicketContexte
   statut: TicketStatut
-  reponse: string | null
+  reponse: string | null // legacy (avant les fils)
   repondu_le: string | null
   // bigint cote Postgres -> number cote JS (sur : message_id Telegram << 2^53).
   telegram_message_id: number | null
   lu_par_olivier: boolean
   // Thematique auto-detectee par l'IA a la creation (cf. lib/ticket-categories).
   categorie: string | null
+  // Titre court genere par l'IA (apercu de la carte). Null -> on retombe sur message.
+  titre: string | null
+  derniere_activite_le: string | null
 }
 
-// Forme renvoyee par GET /api/tickets au navigateur : on n'expose ni le
-// message_id Telegram ni l'user_id (inutiles cote client, plus propre).
-export type TicketPublic = Omit<Ticket, 'telegram_message_id' | 'user_id'>
+// Carte compacte renvoyee par GET /api/tickets (liste "Mes demandes").
+export interface TicketResume {
+  id: string
+  categorie: string | null
+  statut: TicketStatut
+  titre: string | null
+  apercu: string // titre IA si présent, sinon début du 1er message
+  lu_par_olivier: boolean
+  derniere_activite_le: string | null
+  nb_messages: number
+  dernier_auteur: 'olivier' | 'julien' | null
+}
+
+// Detail d'un fil renvoye par GET /api/tickets/[id].
+export interface TicketDetail {
+  id: string
+  categorie: string | null
+  statut: TicketStatut
+  titre: string | null
+  created_at: string
+  messages: TicketMessage[]
+}
 
 // =============================================================
 // Phase 2 — Module Devis Express ATG

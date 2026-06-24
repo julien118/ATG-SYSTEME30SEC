@@ -1,41 +1,30 @@
 // =============================================================
-// /api/tickets — canal de support Olivier -> Julien
+// /api/tickets — fils de discussion support Olivier <-> Julien
 // =============================================================
-// POST : Olivier envoie un message (texte seul) + un contexte auto-capture. On
-//   stocke le ticket, on enrichit le contexte cote serveur (libelle du chantier),
-//   puis on notifie Julien sur Telegram et on memorise le message_id retourne
-//   (cle de matching des reponses, cf. /api/telegram-webhook).
-// GET  : liste des demandes d'Olivier pour le panneau "Mes demandes" + compteur
-//   de reponses non lues (pastille).
+// POST : Olivier ouvre une demande (texte + vocal OGG optionnel). On analyse
+//   (catégorie + titre IA), on crée le ticket + le 1er message du fil, on notifie
+//   Julien sur Telegram (en mémorisant le message_id pour matcher ses réponses),
+//   et on lui transmet le vocal (bulle vocale native si OGG).
+// GET  : liste compacte (cartes) pour "Mes demandes" : titre/aperçu, état, rubrique,
+//   non-lu, dernière activité, nb d'échanges. + compteur nonLus.
 //
-// Routes PROTEGEES par le middleware (session d'Olivier). Acces DB via le client
-// admin (service_role) en filtrant explicitement par ATG_USER_ID, comme les
-// autres routes du projet.
+// Protégé par le middleware. Accès DB via le client admin, filtré par ATG_USER_ID.
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ATG_USER_ID } from '@/lib/atg'
-import { sendTelegramAvecId, sendTelegramFichierAudio, echapperHtml, nomDeploiement } from '@/lib/notify'
+import { sendTelegramAvecId, sendTelegramFichierAudio } from '@/lib/notify'
+import { formaterOuverture } from '@/lib/ticket-telegram'
+import { analyserMessage } from '@/lib/ticket-classifier'
 import { reportError } from '@/lib/monitoring'
-import { classifierMessage } from '@/lib/ticket-classifier'
-import { transcoderEnOggOpus } from '@/lib/audio'
-import type { TicketContexte } from '@/lib/types'
+import type { TicketContexte, TicketResume, TicketStatut } from '@/lib/types'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const fmtHorodatage = new Intl.DateTimeFormat('fr-FR', {
-  timeZone: 'Europe/Paris',
-  day: '2-digit',
-  month: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-})
 
-// Ne garde que des chaines courtes sur des cles connues : le contexte vient du
-// navigateur, on ne lui fait pas confiance pour le stocker tel quel.
 function nettoyerContexte(brut: unknown): TicketContexte {
   const c = (brut ?? {}) as Record<string, unknown>
   const str = (v: unknown, max: number): string | undefined => {
@@ -54,72 +43,45 @@ function nettoyerContexte(brut: unknown): TicketContexte {
   return out
 }
 
-function appareilDepuisUA(ua?: string): string | null {
-  if (!ua) return null
-  if (/iphone/i.test(ua)) return 'iPhone'
-  if (/ipad/i.test(ua)) return 'iPad'
-  if (/android/i.test(ua)) return 'Android'
-  if (/mac os x/i.test(ua)) return 'Mac'
-  if (/windows/i.test(ua)) return 'Windows'
-  return null
+function normaliserStatut(s: string | null): TicketStatut {
+  return s === 'resolu' ? 'resolu' : 'ouvert'
 }
 
-function formaterNotifTicket(message: string, ctx: TicketContexte): string {
-  const lignes = [
-    `💬 <b>${echapperHtml(nomDeploiement())}</b> — nouveau message`,
-    echapperHtml(message),
-    '',
-  ]
-  if (ctx.path) lignes.push(`📍 Page : ${echapperHtml(ctx.path)}`)
-  if (ctx.chantierLabel) lignes.push(`🏗️ Chantier : ${echapperHtml(ctx.chantierLabel)}`)
-  const appareil = appareilDepuisUA(ctx.userAgent)
-  const meta = [appareil, ctx.viewport].filter(Boolean).join(' · ')
-  if (meta) lignes.push(`📱 ${echapperHtml(meta)}`)
-  lignes.push(`🕐 ${fmtHorodatage.format(new Date())}`)
-  lignes.push('')
-  lignes.push('↩️ Réponds en "répondant" à ce message.')
-  return lignes.join('\n')
+// Lecture commune JSON / multipart (message + contexte + audio).
+async function lireCorps(
+  request: Request,
+): Promise<{ message: string; contexte: unknown; audio: Blob | null }> {
+  const ct = request.headers.get('content-type') || ''
+  if (ct.includes('multipart/form-data')) {
+    const form = await request.formData()
+    let contexte: unknown = {}
+    try {
+      contexte = JSON.parse(String(form.get('contexte') ?? '{}'))
+    } catch {
+      contexte = {}
+    }
+    const a = form.get('audio')
+    return {
+      message: String(form.get('message') ?? ''),
+      contexte,
+      audio: a instanceof Blob && a.size > 0 ? a : null,
+    }
+  }
+  const body = (await request.json().catch(() => ({}))) as { message?: unknown; contexte?: unknown }
+  return { message: String(body.message ?? ''), contexte: body.contexte, audio: null }
 }
 
 export async function POST(request: Request) {
   try {
-    // Deux formats acceptes : JSON (texte seul) ou multipart/form-data quand un
-    // vocal est joint (champs message + contexte + audio).
-    const ct = request.headers.get('content-type') || ''
-    let messageRaw = ''
-    let contexteRaw: unknown = {}
-    let audioFile: Blob | null = null
-    if (ct.includes('multipart/form-data')) {
-      const form = await request.formData()
-      messageRaw = String(form.get('message') ?? '')
-      try {
-        contexteRaw = JSON.parse(String(form.get('contexte') ?? '{}'))
-      } catch {
-        contexteRaw = {}
-      }
-      const a = form.get('audio')
-      if (a instanceof Blob && a.size > 0) audioFile = a
-    } else {
-      const body = (await request.json().catch(() => ({}))) as {
-        message?: unknown
-        contexte?: unknown
-      }
-      messageRaw = String(body.message ?? '')
-      contexteRaw = body.contexte
-    }
-
+    const { message: messageRaw, contexte: contexteRaw, audio } = await lireCorps(request)
     let message = messageRaw.trim().slice(0, 4000)
-    // Vocal sans texte (transcription vide/echouee) : on garde un libelle parlant.
-    if (!message && audioFile) message = '🎤 Message vocal'
-    if (!message) {
-      return NextResponse.json({ error: 'message_vide' }, { status: 400 })
-    }
+    if (!message && audio) message = '🎤 Message vocal'
+    if (!message) return NextResponse.json({ error: 'message_vide' }, { status: 400 })
 
     const contexte = nettoyerContexte(contexteRaw)
     const admin = createAdminClient()
 
-    // Enrichissement serveur : le navigateur n'a que l'id du chantier (dans l'URL),
-    // pas le libelle. On le resout ici pour la notif + l'affichage.
+    // Libellé du chantier courant (le client n'a que l'id).
     if (contexte.chantierId) {
       const { data: chantier } = await admin
         .from('chantiers')
@@ -130,8 +92,9 @@ export async function POST(request: Request) {
       if (chantier?.client_nom) contexte.chantierLabel = chantier.client_nom
     }
 
-    // Thematique auto-detectee (best-effort, defaut 'autre') pour le tri par sujet.
-    const categorie = await classifierMessage(message)
+    // Analyse IA : rubrique + titre court (best-effort).
+    const { categorie, titre } = await analyserMessage(message)
+    const nowIso = new Date().toISOString()
 
     const { data: ticket, error } = await admin
       .from('tickets')
@@ -141,44 +104,34 @@ export async function POST(request: Request) {
         message,
         contexte,
         categorie,
+        titre: titre || null,
+        statut: 'ouvert',
+        derniere_activite_le: nowIso,
       })
-      .select('id, created_at, message, contexte, statut, reponse, repondu_le, lu_par_olivier, chantier_id, categorie')
+      .select('id')
       .single()
-
     if (error || !ticket) {
       await reportError('Création ticket', error)
       return NextResponse.json({ error: 'creation_impossible' }, { status: 500 })
     }
 
-    // Notif Telegram + memorisation du message_id (cle de matching des reponses).
-    const messageId = await sendTelegramAvecId(formaterNotifTicket(message, contexte))
-    if (messageId !== null) {
-      await admin.from('tickets').update({ telegram_message_id: messageId }).eq('id', ticket.id)
-    }
+    // Notif Telegram (avec titre) + mémorisation du message_id sur le 1er message du fil.
+    const messageId = await sendTelegramAvecId(formaterOuverture(titre || null, message, contexte))
+    await admin.from('ticket_messages').insert({
+      ticket_id: ticket.id,
+      auteur: 'olivier',
+      texte: message,
+      telegram_message_id: messageId,
+    })
 
-    // Vocal d'Olivier joint -> on l'envoie aussi sur Telegram, en reponse au message
-    // du ticket. On transcode d'abord en OGG/OPUS pour un VRAI message vocal natif
-    // (sendVoice, bulle + waveform) ; si le transcode echoue, on retombe sur le
-    // fichier d'origine (sendDocument). Best-effort : ne bloque jamais la reponse.
-    if (audioFile) {
-      let aEnvoyer: Blob = audioFile
-      let nomFichier = 'message-vocal.webm'
-      try {
-        const input = Buffer.from(await audioFile.arrayBuffer())
-        const ext = (audioFile.type || '').includes('mp4') ? 'mp4' : 'webm'
-        const ogg = await transcoderEnOggOpus(input, ext)
-        if (ogg) {
-          aEnvoyer = new Blob([new Uint8Array(ogg)], { type: 'audio/ogg' })
-          nomFichier = 'message-vocal.ogg'
-        }
-      } catch {
-        // transcode KO -> on garde l'original (fallback sendDocument).
-      }
-      await sendTelegramFichierAudio(aEnvoyer, nomFichier, messageId ?? undefined)
+    // Vocal d'Olivier -> Telegram (bulle vocale si OGG ; sinon fichier).
+    if (audio) {
+      const ext = (audio.type || '').includes('ogg') ? 'ogg' : 'webm'
+      await sendTelegramFichierAudio(audio, `message-vocal.${ext}`, messageId ?? undefined)
     }
 
     return NextResponse.json(
-      { ok: true, ticket, notifEnvoyee: messageId !== null },
+      { ok: true, id: ticket.id, notifEnvoyee: messageId !== null },
       { status: 201 },
     )
   } catch (e) {
@@ -191,16 +144,54 @@ export async function POST(request: Request) {
 export async function GET() {
   try {
     const admin = createAdminClient()
-    const { data: tickets } = await admin
+    const { data: tks } = await admin
       .from('tickets')
-      .select('id, created_at, message, contexte, statut, reponse, repondu_le, lu_par_olivier, chantier_id, categorie')
+      .select('id, categorie, statut, titre, message, lu_par_olivier, derniere_activite_le, created_at')
       .eq('user_id', ATG_USER_ID)
-      .order('created_at', { ascending: false })
-      .limit(50)
+      .order('derniere_activite_le', { ascending: false, nullsFirst: false })
+      .limit(80)
 
-    const liste = tickets ?? []
-    const nonLus = liste.filter((t) => t.statut === 'repondu' && !t.lu_par_olivier).length
-    return NextResponse.json({ tickets: liste, nonLus })
+    const tickets = tks ?? []
+    const ids = tickets.map((t) => t.id)
+
+    // Agrégat des messages par fil (nombre + dernier auteur).
+    const agg = new Map<string, { nb: number; last: string; auteur: 'olivier' | 'julien' }>()
+    if (ids.length) {
+      const { data: msgs } = await admin
+        .from('ticket_messages')
+        .select('ticket_id, auteur, created_at')
+        .in('ticket_id', ids)
+      for (const m of msgs ?? []) {
+        const e = agg.get(m.ticket_id)
+        if (!e) {
+          agg.set(m.ticket_id, { nb: 1, last: m.created_at, auteur: m.auteur })
+        } else {
+          e.nb += 1
+          if (m.created_at > e.last) {
+            e.last = m.created_at
+            e.auteur = m.auteur
+          }
+        }
+      }
+    }
+
+    const resumes: TicketResume[] = tickets.map((t) => {
+      const a = agg.get(t.id)
+      const apercu = t.titre?.trim() ? t.titre.trim() : (t.message ?? '').slice(0, 90)
+      return {
+        id: t.id,
+        categorie: t.categorie,
+        statut: normaliserStatut(t.statut),
+        titre: t.titre,
+        apercu,
+        lu_par_olivier: t.lu_par_olivier,
+        derniere_activite_le: t.derniere_activite_le ?? t.created_at,
+        nb_messages: a?.nb ?? 0,
+        dernier_auteur: a?.auteur ?? null,
+      }
+    })
+    const nonLus = tickets.filter((t) => !t.lu_par_olivier).length
+    return NextResponse.json({ tickets: resumes, nonLus })
   } catch (e) {
     console.error('[api/tickets GET]', e)
     await reportError('Liste tickets', e)

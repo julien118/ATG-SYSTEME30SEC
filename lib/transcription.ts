@@ -121,6 +121,48 @@ Tu te limites STRICTEMENT à la ponctuation, aux majuscules et aux accents. En c
 
 Renvoie UNIQUEMENT le texte reponctué, sans guillemets ni commentaire.`
 
+// ---------- Nettoyage de dictee (support / tickets) ----------
+// Contrairement a `reponctuer` (verrouille pour les notes de visite ou chaque mot
+// et mesure comptent), ce nettoyage est destine aux MESSAGES DE SUPPORT : on
+// privilegie la lisibilite. Il SUPPRIME les mots parasites ("euh", "bah"...) et
+// les hesitations, et nettoie la ponctuation, sans changer le sens. Pas de
+// garde-fou de fidelite (on veut justement retirer des mots). Fail-open : tout
+// echec/timeout retombe sur le texte brut.
+const SYSTEME_NETTOYAGE = `Tu reçois une note vocale transcrite, dictée par un artisan pour un message de support. Nettoie-la pour qu'elle soit claire et professionnelle à l'écrit, SANS en changer le sens.
+
+À FAIRE :
+- Supprime les mots parasites et hésitations : « euh », « bah », « ben », « hum », « heu », les « voilà » et « du coup » de remplissage, les faux départs et répétitions involontaires.
+- Ajoute la ponctuation, les majuscules et les accents ; corrige les évidences de transcription.
+- Conserve toutes les informations, les chiffres et le ton.
+
+À NE PAS FAIRE :
+- N'invente rien, n'ajoute aucune information, ne change aucun chiffre ni mesure.
+- Pas de commentaire ni de guillemets.
+
+Renvoie UNIQUEMENT le texte nettoyé.`
+
+export async function nettoyerDictee(texteBrut: string): Promise<string> {
+  const brut = (texteBrut ?? '').trim()
+  if (!brut) return texteBrut ?? ''
+  try {
+    const reponse = await anthropic.messages.create(
+      {
+        model: MODELE_REPONCTUATION,
+        max_tokens: 2000,
+        temperature: 0,
+        system: SYSTEME_NETTOYAGE,
+        messages: [{ role: 'user', content: brut }],
+      },
+      { timeout: TIMEOUT_REPONCTUATION_MS },
+    )
+    const sortie = reponse.content[0]?.type === 'text' ? reponse.content[0].text.trim() : ''
+    return sortie || brut
+  } catch (e) {
+    console.error('[transcription] nettoyage:', e)
+    return texteBrut ?? ''
+  }
+}
+
 // Reponctue un texte brut via Claude (consigne stricte, temperature 0), puis
 // applique le garde-fou. Renvoie TOUJOURS quelque chose d'exploitable : la version
 // reponctuee si elle est sure, sinon le texte brut inchange (fail-open sur erreur,

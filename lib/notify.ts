@@ -67,7 +67,10 @@ export async function sendTelegram(text: string): Promise<void> {
  * — creation de ticket — ne doit pas casser si Telegram est indisponible ; il
  * tient compte du null pour prevenir Olivier).
  */
-export async function sendTelegramAvecId(text: string): Promise<number | null> {
+export async function sendTelegramAvecId(
+  text: string,
+  replyToMessageId?: number,
+): Promise<number | null> {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim()
   const chatId = process.env.TELEGRAM_CHAT_ID?.trim()
   if (!token || !chatId) return null
@@ -82,6 +85,7 @@ export async function sendTelegramAvecId(text: string): Promise<number | null> {
         text,
         parse_mode: 'HTML',
         disable_web_page_preview: true,
+        ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
       }),
       signal: controller.signal,
       cache: 'no-store',

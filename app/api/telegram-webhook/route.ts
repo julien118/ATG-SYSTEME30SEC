@@ -19,7 +19,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendTelegram } from '@/lib/notify'
 import { reportError } from '@/lib/monitoring'
-import { transcrireAudio, reponctuer } from '@/lib/transcription'
+import { transcrireAudio, nettoyerDictee } from '@/lib/transcription'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,11 +27,8 @@ export const maxDuration = 60
 
 const ok = () => NextResponse.json({ ok: true })
 
-// Telecharge un vocal Telegram (file_id) et le transcrit via Whisper. Renvoie le
-// texte (reponctue), ou '' en cas d'echec. Les vocaux Telegram sont en OGG/OPUS,
-// directement acceptes par Whisper. Best-effort : ne throw jamais.
-// Repond l'id du salon courant (aide au setup d'un groupe : on y envoie /chatid
-// pour recuperer son id et router les notifications dessus). Best-effort.
+// Repond l'id du salon courant (aide au setup d'un groupe : "/chatid" -> id du
+// salon, pour router les notifications vers un groupe). Best-effort.
 async function repondreChatId(chatId: string | number): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim()
   if (!token) return
@@ -46,6 +43,9 @@ async function repondreChatId(chatId: string | number): Promise<void> {
   }
 }
 
+// Telecharge un vocal Telegram (file_id) et le transcrit (Whisper) en NETTOYANT les
+// mots parasites (contexte support). Renvoie le texte, ou '' en cas d'echec. Les
+// vocaux Telegram sont en OGG/OPUS, acceptes par Whisper. Best-effort : ne throw jamais.
 async function transcrireVocalTelegram(fileId: string): Promise<string> {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim()
   if (!token) return ''
@@ -61,7 +61,7 @@ async function transcrireVocalTelegram(fileId: string): Promise<string> {
     const buf = new Uint8Array(await dl.arrayBuffer())
     const fichier = new File([buf], 'reponse.ogg', { type: 'audio/ogg' })
     const brut = await transcrireAudio(fichier)
-    return (await reponctuer(brut)).trim()
+    return (await nettoyerDictee(brut)).trim()
   } catch (e) {
     await reportError('Transcription réponse vocale', e)
     return ''
@@ -103,19 +103,32 @@ export async function POST(request: Request) {
     const replyToId = msg.reply_to_message?.message_id
     if (!replyToId) return ok()
 
-    // 3) Matching du ticket par le message_id du message d'origine.
+    // 3) Matching du ticket par le message_id du message d'origine (cherché dans le
+    //    fil ticket_messages). Reply sur autre chose (alerte/digest) -> on ignore.
     const admin = createAdminClient()
-    const { data: ticket } = await admin
-      .from('tickets')
-      .select('id')
+    const { data: mm } = await admin
+      .from('ticket_messages')
+      .select('ticket_id')
       .eq('telegram_message_id', replyToId)
       .maybeSingle()
-    // Reply sur autre chose (une alerte, un digest) -> pas de ticket -> on ignore.
-    if (!ticket) return ok()
+    if (!mm) return ok()
+    const ticketId = mm.ticket_id as string
+    const nowIso = new Date().toISOString()
 
-    // 4) Reponse = texte tapé, OU vocal transcrit (Julien peut répondre à la voix ;
-    //    Olivier voit toujours du texte). Vocal -> Whisper.
-    let reponseTexte = (msg.text ?? '').trim()
+    // 4) Commande de clôture : "/resolu" (ou /ferme) en réponse à un message du fil.
+    const texteReply = (msg.text ?? '').trim()
+    if (/^\/(resolu|resolue|ferme|close)\b/i.test(texteReply)) {
+      await admin
+        .from('tickets')
+        .update({ statut: 'resolu', derniere_activite_le: nowIso })
+        .eq('id', ticketId)
+      await sendTelegram('✅ Demande marquée comme résolue.')
+      return ok()
+    }
+
+    // 5) Réponse = texte tapé, OU vocal transcrit (Julien répond à la voix ; Olivier
+    //    voit toujours du texte, nettoyé). On AJOUTE au fil (pas d'écrasement).
+    let reponseTexte = texteReply
     let estVocal = false
     const fileId = msg.voice?.file_id || msg.audio?.file_id
     if (!reponseTexte && fileId) {
@@ -124,16 +137,16 @@ export async function POST(request: Request) {
     }
     if (!reponseTexte) return ok()
 
-    // 5) Ecriture de la reponse + reveil de la pastille cote Olivier.
+    await admin.from('ticket_messages').insert({
+      ticket_id: ticketId,
+      auteur: 'julien',
+      texte: reponseTexte.slice(0, 8000),
+    })
+    // Le fil redevient ouvert (relance) + remonte + pastille non-lu côté Olivier.
     await admin
       .from('tickets')
-      .update({
-        reponse: reponseTexte.slice(0, 8000),
-        statut: 'repondu',
-        lu_par_olivier: false,
-        repondu_le: new Date().toISOString(),
-      })
-      .eq('id', ticket.id)
+      .update({ statut: 'ouvert', lu_par_olivier: false, derniere_activite_le: nowIso })
+      .eq('id', ticketId)
 
     // 6) Accuse de reception a Julien (best-effort).
     await sendTelegram(
