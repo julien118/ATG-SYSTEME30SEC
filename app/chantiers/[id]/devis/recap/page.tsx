@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import LogoLink from '@/components/LogoLink'
+import AssistantTicket from '@/components/AssistantTicket'
 import BoutonPousser from './bouton-pousser'
 import BlocTotaux from './bloc-totaux'
 import { ATG_USER_ID } from '@/lib/atg'
@@ -106,6 +107,7 @@ export default async function RecapDevisPage({
             Devis - {chantier.client_nom}
           </p>
         </div>
+        <AssistantTicket className="shrink-0" />
       </header>
 
       <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-6 max-w-4xl mx-auto w-full">

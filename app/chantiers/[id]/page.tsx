@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import LogoLink from '@/components/LogoLink'
+import AssistantTicket from '@/components/AssistantTicket'
 import ChantierForm from '@/components/ChantierForm'
 import { ATG_USER_ID } from '@/lib/atg'
 import type { Chantier } from '@/lib/types'
@@ -40,6 +41,7 @@ export default async function ChantierDetailPage({ params }: { params: { id: str
           </svg>
         </Link>
         <LogoLink width={120} height={28} />
+        <AssistantTicket className="ml-auto" />
       </header>
 
       <main className="px-5 py-6 max-w-lg mx-auto">

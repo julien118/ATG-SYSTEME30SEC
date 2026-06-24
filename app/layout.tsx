@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import ToastProvider from '@/components/ToastProvider'
 import AssistantGate from '@/components/AssistantGate'
-import TicketGate from '@/components/TicketGate'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -64,9 +63,6 @@ export default function RootLayout({
         {/* Assistant de consultation des devis (lecture seule), flottant global.
             Masqué sur /login via AssistantGate. */}
         <AssistantGate />
-        {/* "Demander à Julien" (support/ticket), flottant en bas à gauche.
-            Masqué sur /login via TicketGate. */}
-        <TicketGate />
       </body>
     </html>
   )

@@ -10,6 +10,7 @@ import PhotoCapture from '@/components/PhotoCapture'
 import AudioRecorder from '@/components/AudioRecorder'
 import CaptureItemComponent from '@/components/CaptureItem'
 import Spinner from '@/components/Spinner'
+import AssistantTicket from '@/components/AssistantTicket'
 import type { Chantier, CaptureItem, Profile } from '@/lib/types'
 
 interface VisiteClientProps {
@@ -268,6 +269,7 @@ export default function VisiteClient({ chantier, initialCaptures, profile, userI
           >
             Terminer
           </button>
+          <AssistantTicket className="shrink-0" />
         </div>
       </header>
 

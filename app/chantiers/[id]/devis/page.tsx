@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import LogoLink from '@/components/LogoLink'
+import AssistantTicket from '@/components/AssistantTicket'
 import DevisEditeur from './devis-editeur'
 import { ATG_USER_ID } from '@/lib/atg'
 import type { Chantier, Devis, SectionDevis } from '@/lib/types'
@@ -51,6 +52,7 @@ export default async function DevisPage({
             </svg>
           </Link>
           <LogoLink width={120} height={28} />
+          <AssistantTicket className="ml-auto" />
         </header>
         <main className="flex-1 px-5 py-10 max-w-md mx-auto text-center">
           <p className="text-sm text-gray-500 mb-4">
@@ -89,6 +91,7 @@ export default async function DevisPage({
             Devis - {chantier.client_nom}
           </p>
         </div>
+        <AssistantTicket className="shrink-0" />
       </header>
 
       <DevisEditeur
