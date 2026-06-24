@@ -101,6 +101,8 @@ export interface Ticket {
   // bigint cote Postgres -> number cote JS (sur : message_id Telegram << 2^53).
   telegram_message_id: number | null
   lu_par_olivier: boolean
+  // Thematique auto-detectee par l'IA a la creation (cf. lib/ticket-categories).
+  categorie: string | null
 }
 
 // Forme renvoyee par GET /api/tickets au navigateur : on n'expose ni le

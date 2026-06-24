@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { useToast } from './ToastProvider'
 import AudioRecorder from './AudioRecorder'
+import { CATEGORIES, normaliserCategorie } from '@/lib/ticket-categories'
 import type { TicketPublic } from '@/lib/types'
 
 const fmtDate = new Intl.DateTimeFormat('fr-FR', {
@@ -290,7 +291,25 @@ export default function AssistantTicket({ className = '' }: { className?: string
                     </p>
                   </div>
                 ) : (
-                  tickets.map((t) => <CarteTicket key={t.id} ticket={t} />)
+                  // Tri par thématique : une section par catégorie (ordre fixe),
+                  // tickets déjà triés du plus récent au plus ancien dans chacune.
+                  CATEGORIES.map((cat) => {
+                    const items = tickets.filter((t) => normaliserCategorie(t.categorie) === cat.cle)
+                    if (items.length === 0) return null
+                    return (
+                      <div key={cat.cle} className="space-y-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                          {cat.emoji} {cat.label}
+                          <span className="text-gray-300"> · {items.length}</span>
+                        </p>
+                        <div className="space-y-4">
+                          {items.map((t) => (
+                            <CarteTicket key={t.id} ticket={t} />
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })
                 )}
               </div>
             )}

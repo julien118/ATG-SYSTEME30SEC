@@ -17,6 +17,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ATG_USER_ID } from '@/lib/atg'
 import { sendTelegramAvecId, sendTelegramFichierAudio, echapperHtml, nomDeploiement } from '@/lib/notify'
 import { reportError } from '@/lib/monitoring'
+import { classifierMessage } from '@/lib/ticket-classifier'
+import { transcoderEnOggOpus } from '@/lib/audio'
 import type { TicketContexte } from '@/lib/types'
 
 export const runtime = 'nodejs'
@@ -128,6 +130,9 @@ export async function POST(request: Request) {
       if (chantier?.client_nom) contexte.chantierLabel = chantier.client_nom
     }
 
+    // Thematique auto-detectee (best-effort, defaut 'autre') pour le tri par sujet.
+    const categorie = await classifierMessage(message)
+
     const { data: ticket, error } = await admin
       .from('tickets')
       .insert({
@@ -135,8 +140,9 @@ export async function POST(request: Request) {
         chantier_id: contexte.chantierId ?? null,
         message,
         contexte,
+        categorie,
       })
-      .select('id, created_at, message, contexte, statut, reponse, repondu_le, lu_par_olivier, chantier_id')
+      .select('id, created_at, message, contexte, statut, reponse, repondu_le, lu_par_olivier, chantier_id, categorie')
       .single()
 
     if (error || !ticket) {
@@ -150,10 +156,25 @@ export async function POST(request: Request) {
       await admin.from('tickets').update({ telegram_message_id: messageId }).eq('id', ticket.id)
     }
 
-    // Vocal d'Olivier joint -> on l'envoie aussi sur Telegram (en reponse au message
-    // du ticket pour le rattacher). Best-effort : ne bloque jamais la reponse.
+    // Vocal d'Olivier joint -> on l'envoie aussi sur Telegram, en reponse au message
+    // du ticket. On transcode d'abord en OGG/OPUS pour un VRAI message vocal natif
+    // (sendVoice, bulle + waveform) ; si le transcode echoue, on retombe sur le
+    // fichier d'origine (sendDocument). Best-effort : ne bloque jamais la reponse.
     if (audioFile) {
-      await sendTelegramFichierAudio(audioFile, 'message-vocal.webm', messageId ?? undefined)
+      let aEnvoyer: Blob = audioFile
+      let nomFichier = 'message-vocal.webm'
+      try {
+        const input = Buffer.from(await audioFile.arrayBuffer())
+        const ext = (audioFile.type || '').includes('mp4') ? 'mp4' : 'webm'
+        const ogg = await transcoderEnOggOpus(input, ext)
+        if (ogg) {
+          aEnvoyer = new Blob([new Uint8Array(ogg)], { type: 'audio/ogg' })
+          nomFichier = 'message-vocal.ogg'
+        }
+      } catch {
+        // transcode KO -> on garde l'original (fallback sendDocument).
+      }
+      await sendTelegramFichierAudio(aEnvoyer, nomFichier, messageId ?? undefined)
     }
 
     return NextResponse.json(
@@ -172,7 +193,7 @@ export async function GET() {
     const admin = createAdminClient()
     const { data: tickets } = await admin
       .from('tickets')
-      .select('id, created_at, message, contexte, statut, reponse, repondu_le, lu_par_olivier, chantier_id')
+      .select('id, created_at, message, contexte, statut, reponse, repondu_le, lu_par_olivier, chantier_id, categorie')
       .eq('user_id', ATG_USER_ID)
       .order('created_at', { ascending: false })
       .limit(50)
