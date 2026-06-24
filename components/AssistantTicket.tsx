@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { useToast } from './ToastProvider'
+import AudioRecorder from './AudioRecorder'
 import type { TicketPublic } from '@/lib/types'
 
 const fmtDate = new Intl.DateTimeFormat('fr-FR', {
@@ -43,6 +44,11 @@ export default function AssistantTicket({ className = '' }: { className?: string
   const [tickets, setTickets] = useState<TicketPublic[]>([])
   const [nonLus, setNonLus] = useState(0)
   const [chargement, setChargement] = useState(false)
+  // Dictée : transcription en cours, message d'erreur discret, et le vocal capturé
+  // (envoyé tel quel à Julien sur Telegram en plus de la transcription).
+  const [transcription, setTranscription] = useState(false)
+  const [erreurVocal, setErreurVocal] = useState('')
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
 
   // --- Chargement des demandes : au montage + rafraichissement quand ouvert ---
   const rafraichir = useCallback(async () => {
@@ -82,19 +88,61 @@ export default function AssistantTicket({ className = '' }: { className?: string
     }
   }
 
+  // Dictée : même mécanique que l'assistant (micro -> /api/transcribe). Le texte
+  // transcrit remplit le champ (Olivier relit/corrige), et on CONSERVE le vocal
+  // pour l'envoyer aussi à Julien sur Telegram. Si la transcription échoue, le
+  // vocal sera quand même transmis.
+  async function transcrire(blob: Blob) {
+    if (blob.size < 1000) {
+      setErreurVocal('Enregistrement trop court.')
+      return
+    }
+    setErreurVocal('')
+    setAudioBlob(blob)
+    setTranscription(true)
+    try {
+      const fd = new FormData()
+      fd.append('audio', blob, 'message.webm')
+      const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
+      const data = await res.json().catch(() => ({}))
+      const texte = (data.text ?? '').trim()
+      if (res.ok && texte) {
+        setSaisie((prev) => (prev.trim() ? `${prev.trim()} ${texte}` : texte))
+      } else {
+        setErreurVocal('Transcription indisponible — le vocal sera quand même envoyé à Julien.')
+      }
+    } catch {
+      setErreurVocal('Transcription indisponible — le vocal sera quand même envoyé à Julien.')
+    } finally {
+      setTranscription(false)
+    }
+  }
+
   async function envoyer() {
     const message = saisie.trim()
-    if (!message || envoi) return
+    if ((!message && !audioBlob) || envoi || transcription) return
     setEnvoi(true)
     try {
-      const res = await fetch('/api/tickets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, contexte: capturerContexte() }),
-      })
+      // Avec un vocal : multipart (message + contexte + audio). Sinon : JSON.
+      let res: Response
+      if (audioBlob) {
+        const fd = new FormData()
+        fd.append('message', message)
+        fd.append('contexte', JSON.stringify(capturerContexte()))
+        fd.append('audio', audioBlob, 'message-vocal.webm')
+        res = await fetch('/api/tickets', { method: 'POST', body: fd })
+      } else {
+        res = await fetch('/api/tickets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message, contexte: capturerContexte() }),
+        })
+      }
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         setSaisie('')
+        setAudioBlob(null)
+        setErreurVocal('')
         toast.show(
           data.notifEnvoyee === false
             ? 'Message enregistré, il sera transmis à Julien.'
@@ -182,18 +230,49 @@ export default function AssistantTicket({ className = '' }: { className?: string
             {vue === 'nouveau' ? (
               <div className="flex-1 min-h-0 flex flex-col px-4 py-4 bg-background">
                 <p className="text-sm text-gray-600 mb-3">
-                  Une question, un souci ou une idée d&apos;amélioration ? Écrivez-le ici : Julien
-                  est notifié tout de suite et vous répond directement dans l&apos;app.
+                  Une question, un souci ou une idée d&apos;amélioration ? Écrivez-le ici (ou
+                  dictez-le 🎤) : Julien est notifié tout de suite et vous répond directement ici,
+                  dans « Mes demandes ».
                 </p>
                 <textarea
                   value={saisie}
                   onChange={(e) => setSaisie(e.target.value)}
-                  placeholder="Décrivez votre question ou votre problème…"
+                  placeholder={transcription ? 'Transcription en cours…' : 'Décrivez votre question ou votre problème…'}
                   className="flex-1 min-h-[120px] w-full resize-none rounded-xl bg-input-bg border border-border focus:border-primary focus:bg-input-focus outline-none px-3.5 py-3 text-sm leading-relaxed"
                 />
+                {/* Dictée vocale : même micro que l'assistant ; le vocal part aussi à Julien. */}
+                <div className="mt-2 flex items-center gap-2">
+                  <AudioRecorder
+                    variant="compact"
+                    onRecordingComplete={transcrire}
+                    onError={setErreurVocal}
+                    disabled={envoi || transcription}
+                  />
+                  <span className="text-xs text-gray-500 min-w-0 truncate">
+                    {transcription
+                      ? 'Transcription en cours…'
+                      : audioBlob
+                        ? '🎤 Vocal joint (envoyé à Julien)'
+                        : 'Ou dictez votre message'}
+                  </span>
+                  {audioBlob && !transcription && (
+                    <button
+                      type="button"
+                      onClick={() => setAudioBlob(null)}
+                      className="ml-auto shrink-0 text-xs font-medium text-red-600 hover:underline"
+                    >
+                      Retirer
+                    </button>
+                  )}
+                </div>
+                {erreurVocal && (
+                  <p className="text-xs text-amber-600 mt-1" role="status">
+                    {erreurVocal}
+                  </p>
+                )}
                 <button
                   onClick={envoyer}
-                  disabled={!saisie.trim() || envoi}
+                  disabled={(!saisie.trim() && !audioBlob) || envoi || transcription}
                   className="btn-primary mt-3 w-full"
                 >
                   {envoi ? 'Envoi…' : 'Envoyer à Julien'}

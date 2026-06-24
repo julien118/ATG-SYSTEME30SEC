@@ -15,7 +15,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ATG_USER_ID } from '@/lib/atg'
-import { sendTelegramAvecId, echapperHtml, nomDeploiement } from '@/lib/notify'
+import { sendTelegramAvecId, sendTelegramFichierAudio, echapperHtml, nomDeploiement } from '@/lib/notify'
 import { reportError } from '@/lib/monitoring'
 import type { TicketContexte } from '@/lib/types'
 
@@ -81,16 +81,39 @@ function formaterNotifTicket(message: string, ctx: TicketContexte): string {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json().catch(() => ({}))) as {
-      message?: unknown
-      contexte?: unknown
+    // Deux formats acceptes : JSON (texte seul) ou multipart/form-data quand un
+    // vocal est joint (champs message + contexte + audio).
+    const ct = request.headers.get('content-type') || ''
+    let messageRaw = ''
+    let contexteRaw: unknown = {}
+    let audioFile: Blob | null = null
+    if (ct.includes('multipart/form-data')) {
+      const form = await request.formData()
+      messageRaw = String(form.get('message') ?? '')
+      try {
+        contexteRaw = JSON.parse(String(form.get('contexte') ?? '{}'))
+      } catch {
+        contexteRaw = {}
+      }
+      const a = form.get('audio')
+      if (a instanceof Blob && a.size > 0) audioFile = a
+    } else {
+      const body = (await request.json().catch(() => ({}))) as {
+        message?: unknown
+        contexte?: unknown
+      }
+      messageRaw = String(body.message ?? '')
+      contexteRaw = body.contexte
     }
-    const message = String(body.message ?? '').trim().slice(0, 4000)
+
+    let message = messageRaw.trim().slice(0, 4000)
+    // Vocal sans texte (transcription vide/echouee) : on garde un libelle parlant.
+    if (!message && audioFile) message = '🎤 Message vocal'
     if (!message) {
       return NextResponse.json({ error: 'message_vide' }, { status: 400 })
     }
 
-    const contexte = nettoyerContexte(body.contexte)
+    const contexte = nettoyerContexte(contexteRaw)
     const admin = createAdminClient()
 
     // Enrichissement serveur : le navigateur n'a que l'id du chantier (dans l'URL),
@@ -125,6 +148,12 @@ export async function POST(request: Request) {
     const messageId = await sendTelegramAvecId(formaterNotifTicket(message, contexte))
     if (messageId !== null) {
       await admin.from('tickets').update({ telegram_message_id: messageId }).eq('id', ticket.id)
+    }
+
+    // Vocal d'Olivier joint -> on l'envoie aussi sur Telegram (en reponse au message
+    // du ticket pour le rattacher). Best-effort : ne bloque jamais la reponse.
+    if (audioFile) {
+      await sendTelegramFichierAudio(audioFile, 'message-vocal.webm', messageId ?? undefined)
     }
 
     return NextResponse.json(

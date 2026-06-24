@@ -97,6 +97,44 @@ export async function sendTelegramAvecId(text: string): Promise<number | null> {
 }
 
 /**
+ * Envoie un fichier audio (le vocal d'Olivier) sur Telegram, en reponse au message
+ * du ticket (`replyToMessageId`) pour le rattacher visuellement. OGG/OPUS -> message
+ * vocal natif (sendVoice) ; tout autre format (webm/mp4...) -> document audio jouable
+ * (sendDocument), car Telegram n'accepte le vocal natif qu'en OGG/OPUS. Best-effort :
+ * ne throw JAMAIS (la creation de ticket ne doit pas casser si Telegram refuse).
+ */
+export async function sendTelegramFichierAudio(
+  file: Blob,
+  filename: string,
+  replyToMessageId?: number,
+): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim()
+  const chatId = process.env.TELEGRAM_CHAT_ID?.trim()
+  if (!token || !chatId) return
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 20000)
+  try {
+    const isOgg = /ogg/i.test(file.type || '')
+    const method = isOgg ? 'sendVoice' : 'sendDocument'
+    const field = isOgg ? 'voice' : 'document'
+    const form = new FormData()
+    form.append('chat_id', chatId)
+    if (replyToMessageId) form.append('reply_to_message_id', String(replyToMessageId))
+    if (!isOgg) form.append('caption', "🎤 Message vocal d'Olivier")
+    form.append(field, file, filename)
+    await fetch(`${TELEGRAM_API}/bot${token}/${method}`, {
+      method: 'POST',
+      body: form,
+      signal: controller.signal,
+    })
+  } catch {
+    // best-effort : on n'alerte pas sur un echec d'envoi de vocal.
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
  * Webhook generique optionnel (n8n / Slack / Discord). No-op si ALERT_WEBHOOK_URL
  * n'est pas defini. Le corps porte `text` (Slack), `content` (Discord) + meta.
  */
