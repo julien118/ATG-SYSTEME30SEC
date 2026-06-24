@@ -191,7 +191,10 @@ export async function GET() {
       }
     })
     const nonLus = tickets.filter((t) => !t.lu_par_olivier).length
-    return NextResponse.json({ tickets: resumes, nonLus })
+    return NextResponse.json(
+      { tickets: resumes, nonLus },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } },
+    )
   } catch (e) {
     console.error('[api/tickets GET]', e)
     await reportError('Liste tickets', e)

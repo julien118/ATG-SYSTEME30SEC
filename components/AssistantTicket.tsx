@@ -51,7 +51,7 @@ export default function AssistantTicket({ className = '' }: { className?: string
 
   const rafraichirListe = useCallback(async () => {
     try {
-      const res = await fetch('/api/tickets')
+      const res = await fetch('/api/tickets', { cache: 'no-store' })
       const data = await res.json().catch(() => ({}))
       setResumes(Array.isArray(data.tickets) ? data.tickets : [])
       setNonLus(typeof data.nonLus === 'number' ? data.nonLus : 0)
@@ -71,7 +71,7 @@ export default function AssistantTicket({ className = '' }: { className?: string
 
   const chargerDetail = useCallback(async (id: string) => {
     try {
-      const res = await fetch(`/api/tickets/${id}`)
+      const res = await fetch(`/api/tickets/${id}`, { cache: 'no-store' })
       const data = await res.json().catch(() => ({}))
       if (res.ok && data.ticket) {
         setDetail(data.ticket as TicketDetail)

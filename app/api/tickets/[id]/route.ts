@@ -42,7 +42,10 @@ export async function GET(_request: Request, { params }: { params: { id: string 
       created_at: t.created_at,
       messages: (msgs ?? []) as TicketMessage[],
     }
-    return NextResponse.json({ ticket: detail })
+    return NextResponse.json(
+      { ticket: detail },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } },
+    )
   } catch (e) {
     console.error('[api/tickets/[id] GET]', e)
     await reportError('Détail ticket', e)
