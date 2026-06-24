@@ -148,7 +148,7 @@ export default async function RecapDevisPage({
         <div className="mx-4 rounded-xl border border-border bg-white overflow-hidden">
           {/* Header colonnes : masque sur mobile (n'a de sens qu'en mode
               colonnes), affiche a partir de sm: comme avant. */}
-          <div className="hidden sm:grid sm:grid-cols-[1fr_80px_80px_110px_120px] gap-2 bg-primary text-white text-xs font-semibold uppercase tracking-wider px-3 py-2.5">
+          <div className="hidden sm:grid sm:grid-cols-[minmax(0,1fr)_80px_80px_110px_120px] gap-2 bg-primary text-white text-xs font-semibold uppercase tracking-wider px-3 py-2.5">
             <div>Désignation</div>
             <div className="text-right">Qté.</div>
             <div className="text-center">Unité</div>
@@ -200,10 +200,21 @@ export default async function RecapDevisPage({
                           </div>
                         </div>
 
-                        {/* DESKTOP (>= sm) : grille en colonnes, INCHANGEE. */}
-                        <div className="hidden sm:grid sm:grid-cols-[1fr_80px_80px_110px_120px] gap-2 px-3 pt-2.5 pb-1.5 text-sm items-start">
-                          <div className="text-foreground min-w-0 break-words font-medium">
-                            {decoderEntitesHtml(a.libelle)}
+                        {/* DESKTOP (>= sm) : grille en colonnes. minmax(0,1fr) sur la
+                            désignation -> elle reste DANS sa colonne (jamais de débordement
+                            sur Qté/Unité/Prix, même libellé très long). La description
+                            technique est placée SOUS le libellé DANS la colonne désignation
+                            (comme Costructor), pas en pleine largeur sous les chiffres. */}
+                        <div className="hidden sm:grid sm:grid-cols-[minmax(0,1fr)_80px_80px_110px_120px] gap-2 px-3 pt-2.5 pb-2.5 text-sm items-start">
+                          <div className="min-w-0 break-words">
+                            <div className="text-foreground font-medium">
+                              {decoderEntitesHtml(a.libelle)}
+                            </div>
+                            {hasDescription && (
+                              <div className="mt-1 text-xs font-normal text-gray-600 leading-relaxed whitespace-pre-line">
+                                {description}
+                              </div>
+                            )}
                           </div>
                           <div className="text-right tabular-nums text-foreground">
                             {a.quantite}
@@ -218,9 +229,10 @@ export default async function RecapDevisPage({
                             {formatEUR(total)}
                           </div>
                         </div>
-                        {/* Description technique (dossier d'appel d'offres) sous la ligne */}
+                        {/* Description technique — MOBILE uniquement (sous le bloc empilé) ;
+                            sur desktop elle est dans la colonne désignation ci-dessus. */}
                         {hasDescription && (
-                          <div className="px-3 pb-3 text-[11px] sm:text-xs text-gray-600 leading-relaxed whitespace-pre-line">
+                          <div className="sm:hidden px-3 pb-3 text-[11px] text-gray-600 leading-relaxed whitespace-pre-line">
                             {description}
                           </div>
                         )}
