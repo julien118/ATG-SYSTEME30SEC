@@ -14,6 +14,7 @@
 
 import { testRouting } from './routing.mts'
 import { testReconstruction, testReordonnancement } from './reconstruction.mts'
+import { testOuvrages } from './ouvrages.mts'
 import { testGardes } from './gardes.mts'
 import { testFideliteModele } from './fidelite-modele.mts'
 import { testE2eReinjection } from './e2e-reinjection.mts'
@@ -40,6 +41,7 @@ const FAMILLES: Array<{ nom: string; run: () => Promise<Resultat[]> }> = [
   { nom: 'A1 routing (pur)', run: testRouting },
   { nom: 'A2 reconstruction (hors-ligne)', run: testReconstruction },
   { nom: 'A4 reordonnancement (hors-ligne)', run: testReordonnancement },
+  { nom: 'A5 ouvrages (hors-ligne)', run: testOuvrages },
   { nom: 'A3 gardes de securite (pur)', run: testGardes },
   { nom: 'B1 fidelite modele (GET only)', run: testFideliteModele },
   { nom: 'C1 e2e reinjection (compte test)', run: testE2eReinjection },

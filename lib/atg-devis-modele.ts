@@ -58,14 +58,56 @@ export interface LigneModele {
   tax?: { id: string; rate?: number } | null
   unit?: { id: string; symbol?: string } | null
   product?: { id: string; name?: string } | null
+  // Lot 2 — OUVRAGES : un « ouvrage » Costructor est une ligne produit portant
+  // productType work/work_detailed + supplies (deboursé : main d'œuvre = cadence,
+  // materiaux). On lit ces champs BRUTS du snapshot pour les recopier au push, afin
+  // que Costructor recree l'ouvrage et calcule temps chantier + rentabilite.
+  productType?: string | null
+  buyPrice?: number | null
+  source?: string | null
+  sourceId?: string | null
+  reference?: string | null
+  persist?: boolean | null
+  supplies?: Array<{
+    // L'element (main d'œuvre / materiau) porte ses tarifs : buyPrice = deboursé
+    // (PA.U HT), sellPrice = prix de vente (Prix U HT). C'est ce qui alimente le
+    // temps chantier chiffré + la rentabilite cote editeur Costructor.
+    element?: { id?: string; buyPrice?: number | null; sellPrice?: number | null } | null
+    quantity?: number | null
+    position?: number | null
+    lockSellPrice?: boolean | null
+  }> | null
   lines?: LigneModele[]
+}
+
+// Champs d'ouvrage recopies sur une ligne du payload (sous-ensemble de la variante
+// produit de LignePayload). Forme des supplies VALIDEE PAR LE SPIKE : on envoie
+// { element:<id>, quantity (cadence/conso par unité), position, lockSellPrice } +
+// buyPrice (PA.U HT, deboursé) / sellPrice (Prix U HT) de la supply (les id/key sont
+// generes par le serveur). persist:false comme l'UI = cle de la non-corruption a la
+// reouverture. Sans buyPrice/sellPrice la main d'œuvre ressort sans prix (spike v1).
+export interface ChampsOuvrage {
+  productType?: string
+  supplies?: Array<{
+    element: string
+    quantity: number
+    position: number
+    lockSellPrice: boolean
+    buyPrice?: number
+    sellPrice?: number
+  }>
+  buyPrice?: number
+  source?: string
+  sourceId?: string
+  reference?: string
+  persist?: boolean
 }
 
 // Ligne du payload POST /quotes.
 export type LignePayload =
   | { type: 'text'; description: string }
   | { type: 'group'; description: string; lines: LignePayload[] }
-  | {
+  | ({
       type: 'product'
       product: string
       description: string
@@ -76,7 +118,7 @@ export type LignePayload =
       // de base. Aucun taux force : on suit la ligne du modele.
       tax?: string
       taxRate?: number
-    }
+    } & ChampsOuvrage)
 
 export interface MetresFacade {
   nom: string
@@ -401,6 +443,42 @@ function taxeLigne(l: LigneModele): { tax?: string; taxRate?: number } {
   return {}
 }
 
+// Lot 2 — Recopie les champs d'OUVRAGE d'une ligne modele sur la ligne du push.
+// Non-ouvrage (productType absent / autre) -> {} : ligne plate inchangee (zero
+// regression). En PROD le snapshot est lu sur le compte cible, donc les
+// supplies[].element.id sont valides (assertSnapshotCoherentAvecCible garantit
+// source===cible). Quantite metré et sellPrice (prix/u modele) restent geres par
+// l'appelant ; ici on n'ajoute QUE la nature ouvrage + le deboursé.
+function champsOuvrage(l: LigneModele): ChampsOuvrage {
+  if (l.productType !== 'work' && l.productType !== 'work_detailed') return {}
+  const supplies = (l.supplies ?? [])
+    .map((s) =>
+      s?.element?.id
+        ? {
+            element: s.element.id,
+            quantity: typeof s.quantity === 'number' ? s.quantity : 0,
+            position: s.position ?? 0,
+            lockSellPrice: !!s.lockSellPrice,
+            // Tarifs de la supply (main d'œuvre / materiau) : PA.U HT (deboursé) +
+            // Prix U HT. Indispensables pour que la ligne main d'œuvre ressorte
+            // chiffrée et que la rentabilite se calcule (spike v2/v3).
+            ...(typeof s.element.buyPrice === 'number' ? { buyPrice: s.element.buyPrice } : {}),
+            ...(typeof s.element.sellPrice === 'number' ? { sellPrice: s.element.sellPrice } : {}),
+          }
+        : null,
+    )
+    .filter((s): s is NonNullable<typeof s> => s !== null)
+  return {
+    productType: l.productType,
+    ...(supplies.length > 0 ? { supplies } : {}),
+    ...(typeof l.buyPrice === 'number' ? { buyPrice: l.buyPrice } : {}),
+    ...(l.source ? { source: l.source } : {}),
+    ...(l.sourceId ? { sourceId: l.sourceId } : {}),
+    ...(l.reference ? { reference: l.reference } : {}),
+    persist: false,
+  }
+}
+
 // Id de taxe le plus frequent dans le modele (taux dominant), pour les postes
 // AJOUTES qui n'existent pas dans le modele (points singuliers issus du catalogue
 // plat). On les aligne sur le taux dominant du modele plutot que de les laisser
@@ -476,6 +554,7 @@ function assemblerEnfants(
           sellPrice: l.sellPrice ?? 0,
           unit: l.unit?.id ?? uniteVersCostructorId(l.unit?.symbol ?? ''),
           ...taxeLigne(l),
+          ...champsOuvrage(l), // Lot 2 : ouvrage (productType + supplies) si présent
         })
       }
       // produit abandonné → on jette aussi son titre en attente
@@ -680,6 +759,7 @@ export function construirePayloadDepuisModele(
           sellPrice: ligne.sellPrice ?? 0,
           unit: ligne.unit?.id ?? uniteVersCostructorId(ligne.unit?.symbol ?? ''),
           ...taxeLigne(ligne),
+          ...champsOuvrage(ligne), // Lot 2 : ouvrage racine éventuel
         })
       }
       continue
@@ -1081,6 +1161,7 @@ export function reconstruireDepuisSnapshot(
           sellPrice: ligne.sellPrice ?? 0,
           unit: ligne.unit?.id ?? uniteVersCostructorId(ligne.unit?.symbol ?? ''),
           ...taxeLigne(ligne),
+          ...champsOuvrage(ligne), // Lot 2 : ouvrage racine éventuel
         })
       }
     } else if (ligne.type === 'group' && !groupeAProduits(ligne)) {
