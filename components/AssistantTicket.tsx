@@ -46,6 +46,7 @@ export default function AssistantTicket({ className = '' }: { className?: string
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<TicketDetail | null>(null)
   const [chargementDetail, setChargementDetail] = useState(false)
+  const [erreurDetail, setErreurDetail] = useState(false)
   const finRef = useRef<HTMLDivElement>(null)
 
   const rafraichirListe = useCallback(async () => {
@@ -72,15 +73,38 @@ export default function AssistantTicket({ className = '' }: { className?: string
     try {
       const res = await fetch(`/api/tickets/${id}`)
       const data = await res.json().catch(() => ({}))
-      if (data.ticket) setDetail(data.ticket as TicketDetail)
+      if (res.ok && data.ticket) {
+        setDetail(data.ticket as TicketDetail)
+        setErreurDetail(false)
+      } else {
+        setErreurDetail(true)
+      }
     } catch {
-      // silencieux
+      setErreurDetail(true)
     }
   }, [])
+
+  // Rafraîchit dès qu'on revient sur l'app (ex. retour de Telegram) : la réponse
+  // apparaît immédiatement, sans attendre le prochain poll. Met aussi à jour la
+  // pastille « ? » même widget fermé.
+  useEffect(() => {
+    function onRetour() {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      rafraichirListe()
+      if (vue === 'conversation' && selectedId) chargerDetail(selectedId)
+    }
+    window.addEventListener('focus', onRetour)
+    document.addEventListener('visibilitychange', onRetour)
+    return () => {
+      window.removeEventListener('focus', onRetour)
+      document.removeEventListener('visibilitychange', onRetour)
+    }
+  }, [vue, selectedId, rafraichirListe, chargerDetail])
 
   // Ouverture d'une conversation : charge le fil + marque ce fil lu + poll léger.
   useEffect(() => {
     if (vue !== 'conversation' || !selectedId) return
+    setErreurDetail(false)
     setChargementDetail(true)
     chargerDetail(selectedId).finally(() => setChargementDetail(false))
     // Marque CE fil lu (optimiste + serveur).
@@ -90,7 +114,7 @@ export default function AssistantTicket({ className = '' }: { className?: string
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: selectedId }),
     }).catch(() => {})
-    const t = setInterval(() => chargerDetail(selectedId), 15000)
+    const t = setInterval(() => chargerDetail(selectedId), 10000)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vue, selectedId, chargerDetail])
@@ -251,13 +275,9 @@ export default function AssistantTicket({ className = '' }: { className?: string
                   Nouveau message
                 </Onglet>
                 <Onglet actif={vue === 'liste'} onClick={() => setVue('liste')}>
-                  <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1">
                     Mes demandes
-                    {nonLus > 0 && (
-                      <span className="h-4 min-w-4 px-1 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center">
-                        {nonLus}
-                      </span>
-                    )}
+                    {nonLus > 0 && <span className="font-bold text-red-600">({nonLus})</span>}
                   </span>
                 </Onglet>
               </div>
@@ -379,6 +399,16 @@ export default function AssistantTicket({ className = '' }: { className?: string
                 <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-3">
                   {chargementDetail && !detail ? (
                     <p className="text-sm text-gray-400 text-center pt-8">Chargement…</p>
+                  ) : erreurDetail && !detail ? (
+                    <div className="text-center pt-8">
+                      <p className="text-sm text-gray-500">Impossible de charger la discussion.</p>
+                      <button
+                        onClick={() => selectedId && chargerDetail(selectedId)}
+                        className="text-xs font-medium text-primary mt-1 hover:underline"
+                      >
+                        Réessayer
+                      </button>
+                    </div>
                   ) : (
                     (detail?.messages ?? []).map((m) => (
                       <div key={m.id} className="space-y-1">
