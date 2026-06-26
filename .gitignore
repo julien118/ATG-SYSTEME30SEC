@@ -42,3 +42,12 @@ data/
 DECOUVERTE-COMPTE-OLIVIER.md
 REPLICATION-LOG.md
 .gstack/
+
+# Secrets & junk locaux — NE JAMAIS committer
+env.txt
+/memory/
+# doublons de synchro iCloud
+* 2.ts
+* 2.tsx
+* 2.js
+* 2.json
