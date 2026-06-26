@@ -79,14 +79,22 @@ export async function GET(request: Request) {
   }
 
   // Heartbeat → Tour de Contrôle (confirme que le cron quotidien a bien tourné).
-  try {
-    await fetch('https://ionnyx-tour-de-controle.vercel.app/api/ingest', {
-      method: 'POST',
-      headers: { 'x-ionnyx-token': process.env.TOUR_INGEST_SECRET || '', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ system: 'atg', module: 'cron-7h', type: 'heartbeat', titre: 'Cron quotidien ATG OK', detail: resume }),
-    })
-  } catch (e) {
-    console.error('[cron] heartbeat Tour:', e)
+  // POST résilient : on contrôle le statut HTTP et on ré-essaie sur non-2xx. La Tour
+  // renvoie désormais 502 quand la persistance du heartbeat échoue (cold start /
+  // pool saturé Supabase) ; un ping silencieusement perdu = fausse alerte URGENT.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch('https://ionnyx-tour-de-controle.vercel.app/api/ingest', {
+        method: 'POST',
+        headers: { 'x-ionnyx-token': process.env.TOUR_INGEST_SECRET || '', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ system: 'atg', module: 'cron-7h', type: 'heartbeat', titre: 'Cron quotidien ATG OK', detail: resume }),
+      })
+      if (res.ok) break
+      console.error(`[cron] heartbeat Tour: HTTP ${res.status} (tentative ${attempt}/3)`)
+    } catch (e) {
+      console.error(`[cron] heartbeat Tour (tentative ${attempt}/3):`, e)
+    }
+    if (attempt < 3) await new Promise((r) => setTimeout(r, 500 * attempt))
   }
 
   return NextResponse.json({ ok: true, ...resume })
