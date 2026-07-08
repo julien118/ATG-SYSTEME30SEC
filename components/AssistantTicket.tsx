@@ -33,6 +33,57 @@ function formaterDate(iso: string | null): string {
   }
 }
 
+// Titre affiché dans l'onglet du navigateur quand tout est lu (= metadata.title
+// défini dans app/layout.tsx). Sert de valeur de restauration.
+const TITRE_ONGLET_BASE = 'ATG — Système 30 Secondes'
+
+// Pastille rouge sur le favicon (best-effort). Dessine un point rouge par-dessus
+// le favicon existant via un canvas ; restaure l'original quand actif=false.
+// Toute erreur (navigateur récalcitrant, iOS Safari en PWA…) est avalée : le
+// titre de l'onglet reste, lui, le signal fiable partout.
+let faviconOriginal: string | null = null
+function appliquerFavicon(actif: boolean) {
+  if (typeof document === 'undefined') return
+  try {
+    const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']")
+    if (!link) return
+    if (faviconOriginal === null) faviconOriginal = link.href
+
+    if (!actif) {
+      if (faviconOriginal) link.href = faviconOriginal
+      return
+    }
+
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      try {
+        const taille = 32
+        const canvas = document.createElement('canvas')
+        canvas.width = taille
+        canvas.height = taille
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        ctx.drawImage(img, 0, 0, taille, taille)
+        const r = 8
+        ctx.beginPath()
+        ctx.arc(taille - r, r, r, 0, Math.PI * 2)
+        ctx.fillStyle = '#DC2626'
+        ctx.fill()
+        ctx.lineWidth = 2
+        ctx.strokeStyle = '#FFFFFF'
+        ctx.stroke()
+        link.href = canvas.toDataURL('image/png')
+      } catch {
+        // navigateur récalcitrant : on garde le favicon d'origine, tant pis.
+      }
+    }
+    img.src = faviconOriginal || '/favicon-32.png'
+  } catch {
+    // no-op : le titre d'onglet suffit.
+  }
+}
+
 export default function AssistantTicket({ className = '' }: { className?: string }) {
   const pathname = usePathname()
   const toast = useToast()
@@ -123,6 +174,16 @@ export default function AssistantTicket({ className = '' }: { className?: string
   useEffect(() => {
     if (vue === 'conversation') finRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [detail, vue])
+
+  // Alerte dans l'onglet du navigateur : quand Julien a répondu (nonLus > 0), le
+  // titre de l'onglet devient une notification visible même depuis un autre onglet
+  // ou une autre appli ; on restaure le titre normal dès qu'Olivier a lu. Pastille
+  // rouge sur le favicon en complément (best-effort). Ne modifie aucune donnée.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    document.title = nonLus > 0 ? `(${nonLus}) 💬 Julien a répondu` : TITRE_ONGLET_BASE
+    appliquerFavicon(nonLus > 0)
+  }, [nonLus])
 
   function capturerContexte() {
     const m = pathname.match(/\/chantiers\/([0-9a-f-]{36})/i)
@@ -242,6 +303,32 @@ export default function AssistantTicket({ className = '' }: { className?: string
           </span>
         )}
       </button>
+
+      {/* Bandeau d'alerte : glisse sous le header quand Julien a répondu et que le
+          panneau est fermé. Clic -> ouvre « Mes demandes ». Disparaît tout seul
+          dès qu'Olivier a lu (nonLus retombe à 0). Purement visuel. */}
+      {nonLus > 0 && !ouvert && (
+        <button
+          onClick={() => {
+            setVue('liste')
+            setOuvert(true)
+          }}
+          aria-label="Julien vous a répondu — voir la réponse"
+          className="fixed left-2 right-2 sm:left-auto sm:right-3 sm:w-[380px] z-30 flex items-center gap-3 rounded-2xl bg-primary text-white px-4 py-3 shadow-2xl animate-slide-down active:scale-[0.99] transition-transform"
+          style={{ top: 'calc(env(safe-area-inset-top) + 4.25rem)' }}
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-lg">💬</span>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block text-sm font-semibold leading-tight">Julien vous a répondu</span>
+            <span className="block text-xs text-white/80 leading-tight">
+              {nonLus > 1 ? `${nonLus} demandes en attente` : 'Touchez pour voir la réponse'}
+            </span>
+          </span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-white/90">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+      )}
 
       {ouvert && (
         <>
