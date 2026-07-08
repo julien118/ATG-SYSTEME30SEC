@@ -23,16 +23,38 @@ export type OptionsImage = {
 /**
  * Renvoie une URL d'image Supabase redimensionnee (transformation a la volee).
  * Si `url` n'est pas une URL publique Supabase Storage, renvoie `url` inchangee.
+ *
+ * ANTI-RECADRAGE (important) : le endpoint Supabase `render/image` applique par
+ * defaut le mode `resize=cover`, qui ROGNE l'image pour remplir la cible. Pire,
+ * la doc precise que « si une seule dimension est fournie, l'image est
+ * redimensionnee ET recadree ». Resultat : un appel `{ width: 800 }` renvoyait
+ * une bande tronquee (bug constate sur la previsualisation des rapports, alors
+ * que le PDF — qui sert l'originale brute — restait correct).
+ *
+ * Nos photos de visite doivent rester ENTIERES (comme dans le PDF). On force donc
+ * un ajustement proportionnel `contain` (imgproxy `fit`, sans marges ni rognage)
+ * dans une boite englobante : si l'appelant ne donne qu'une dimension, on reflete
+ * l'autre pour former une boite carree. Un appelant peut toujours demander
+ * explicitement un autre mode via `opts.resize` (ex. `cover` pour une vignette
+ * carree assumee).
  */
 export function urlImageRedimensionnee(url: string, opts: OptionsImage = {}): string {
   if (!url || !url.includes(MOTIF_OBJET_PUBLIC)) return url
   try {
     const u = new URL(url)
     u.pathname = u.pathname.replace(MOTIF_OBJET_PUBLIC, SEGMENT_RENDER)
-    if (opts.width) u.searchParams.set('width', String(opts.width))
-    if (opts.height) u.searchParams.set('height', String(opts.height))
+
+    // Boite englobante : une seule dimension fournie => on reflete l'autre pour
+    // eviter le recadrage automatique de Supabase (cf. bloc ci-dessus).
+    const width = opts.width ?? opts.height
+    const height = opts.height ?? opts.width
+    // Par defaut on ne rogne JAMAIS (contain). Rognage seulement si demande.
+    const resize = opts.resize ?? 'contain'
+
+    if (width) u.searchParams.set('width', String(width))
+    if (height) u.searchParams.set('height', String(height))
     if (opts.quality) u.searchParams.set('quality', String(opts.quality))
-    if (opts.resize) u.searchParams.set('resize', opts.resize)
+    if (width || height) u.searchParams.set('resize', resize)
     return u.toString()
   } catch {
     return url
