@@ -460,46 +460,63 @@ function taxeLigne(l: LigneModele): { tax?: string; taxRate?: number } {
   return {}
 }
 
-// Lot 2 — Recopie les champs d'OUVRAGE d'une ligne modele sur la ligne du push.
-// Non-ouvrage (productType absent / autre) -> {} : ligne plate inchangee (zero
-// regression). En PROD le snapshot est lu sur le compte cible, donc les
-// supplies[].element.id sont valides (assertSnapshotCoherentAvecCible garantit
-// source===cible). Quantite metré et sellPrice (prix/u modele) restent geres par
-// l'appelant ; ici on n'ajoute QUE la nature ouvrage + le deboursé.
+// Lot 2 — Recopie les champs porteurs de DÉBOURSÉ d'une ligne modele sur la ligne
+// du push. Deux cas, selon la nature de la ligne (productType) :
+//   • OUVRAGE (work / work_detailed) : nature + supplies (main d'œuvre + matériaux,
+//     chacun avec son deboursé) + deboursé de ligne + sellPriceForced + persist.
+//   • FOURNITURE / autre ligne chiffrée non-ouvrage (productType 'supply',
+//     'material', 'misc'...) : elle porte son deboursé AU NIVEAU DE LA LIGNE
+//     (buyPrice), pas via des supplies. On recopie donc sa nature (productType) + son
+//     deboursé de ligne. Avant ce correctif on renvoyait {} -> le deboursé était
+//     perdu et Costructor affichait un prix d'achat à 0 € (bug des fournitures ITE /
+//     ravalement signalé par Olivier). Validé sur le compte test : POST /quotes
+//     accepte buyPrice sur une ligne produit et le relit correctement.
+// Ligne sans nature ni deboursé -> {} : ligne plate inchangee (zero regression).
+// En PROD le snapshot est lu sur le compte cible, donc les supplies[].element.id
+// sont valides (assertSnapshotCoherentAvecCible garantit source===cible). Quantite
+// metré et sellPrice (prix/u modele) restent geres par l'appelant.
 function champsOuvrage(l: LigneModele): ChampsOuvrage {
-  if (l.productType !== 'work' && l.productType !== 'work_detailed') return {}
-  const supplies = (l.supplies ?? [])
-    .map((s) => {
-      const el = s?.element
-      if (!el?.id) return null
-      // element = OBJET tel quel (id + libellé + nature + unité + tarifs). C'est ce
-      // qui fait apparaitre « Main d'œuvre » et compte le deboursé/temps chantier.
-      return {
-        element: {
-          id: el.id,
-          ...(el.name != null ? { name: el.name } : {}),
-          ...(el.type != null ? { type: el.type } : {}),
-          ...(el.unit != null ? { unit: el.unit } : {}),
-          ...(typeof el.buyPrice === 'number' ? { buyPrice: el.buyPrice } : {}),
-          ...(typeof el.sellPrice === 'number' ? { sellPrice: el.sellPrice } : {}),
-        },
-        quantity: typeof s.quantity === 'number' ? s.quantity : 0,
-        position: s.position ?? 0,
-        lockSellPrice: !!s.lockSellPrice,
-      }
-    })
-    .filter((s): s is NonNullable<typeof s> => s !== null)
+  if (l.productType === 'work' || l.productType === 'work_detailed') {
+    const supplies = (l.supplies ?? [])
+      .map((s) => {
+        const el = s?.element
+        if (!el?.id) return null
+        // element = OBJET tel quel (id + libellé + nature + unité + tarifs). C'est ce
+        // qui fait apparaitre « Main d'œuvre » et compte le deboursé/temps chantier.
+        return {
+          element: {
+            id: el.id,
+            ...(el.name != null ? { name: el.name } : {}),
+            ...(el.type != null ? { type: el.type } : {}),
+            ...(el.unit != null ? { unit: el.unit } : {}),
+            ...(typeof el.buyPrice === 'number' ? { buyPrice: el.buyPrice } : {}),
+            ...(typeof el.sellPrice === 'number' ? { sellPrice: el.sellPrice } : {}),
+          },
+          quantity: typeof s.quantity === 'number' ? s.quantity : 0,
+          position: s.position ?? 0,
+          lockSellPrice: !!s.lockSellPrice,
+        }
+      })
+      .filter((s): s is NonNullable<typeof s> => s !== null)
+    return {
+      productType: l.productType,
+      // On recopie l'etat du modele (false pour les vrais ouvrages) : si on forcait le
+      // prix, Costructor n'agregerait pas le deboursé des supplies -> rentabilite cassee.
+      sellPriceForced: l.sellPriceForced === true,
+      ...(supplies.length > 0 ? { supplies } : {}),
+      ...(typeof l.buyPrice === 'number' ? { buyPrice: l.buyPrice } : {}),
+      ...(l.source ? { source: l.source } : {}),
+      ...(l.sourceId ? { sourceId: l.sourceId } : {}),
+      ...(l.reference ? { reference: l.reference } : {}),
+      persist: false,
+    }
+  }
+  // FOURNITURE / ligne chiffrée non-ouvrage : le deboursé est porté par la ligne
+  // elle-même. On recopie la nature (pour que Costructor la range dans « Fourniture »)
+  // et le deboursé de ligne. Rien à recopier -> {} (zero regression).
   return {
-    productType: l.productType,
-    // On recopie l'etat du modele (false pour les vrais ouvrages) : si on forcait le
-    // prix, Costructor n'agregerait pas le deboursé des supplies -> rentabilite cassee.
-    sellPriceForced: l.sellPriceForced === true,
-    ...(supplies.length > 0 ? { supplies } : {}),
+    ...(l.productType ? { productType: l.productType } : {}),
     ...(typeof l.buyPrice === 'number' ? { buyPrice: l.buyPrice } : {}),
-    ...(l.source ? { source: l.source } : {}),
-    ...(l.sourceId ? { sourceId: l.sourceId } : {}),
-    ...(l.reference ? { reference: l.reference } : {}),
-    persist: false,
   }
 }
 

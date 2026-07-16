@@ -1,8 +1,10 @@
 // A5 - OUVRAGES hors-ligne : un modele portant une ligne OUVRAGE (work_detailed +
 // supplies/cadence + déboursé) doit ressortir AU PUSH avec productType + supplies +
 // buyPrice + persist:false, pour que Costructor recree l'ouvrage et calcule temps
-// chantier + rentabilite. Une ligne NON-ouvrage (sans productType) reste plate
-// (zero regression). PUR, aucun reseau — garde-fou du cablage champsOuvrage.
+// chantier + rentabilite. Une ligne FOURNITURE (productType 'supply' + deboursé de
+// LIGNE) doit ressortir avec productType 'supply' + buyPrice (correctif du bug
+// « fournitures à 0 € » signalé par Olivier). Une ligne SANS nature ni deboursé reste
+// plate (zero regression). PUR, aucun reseau — garde-fou du cablage champsOuvrage.
 
 import {
   deriverSectionsDepuisModele,
@@ -36,7 +38,15 @@ function modeleAvecOuvrage(): any[] {
           type: 'product', position: 1, description: 'Fourniture isolant PSE',
           quantity: 1, sellPrice: 5000,
           unit: { id: 'unit_m2', symbol: 'm²' }, tax: { id: 'tx_10' },
-          product: { id: 'prod_plat', name: 'PSE' }, // pas de productType -> ligne plate
+          product: { id: 'prod_plat', name: 'PSE' }, // pas de productType ni buyPrice -> ligne plate
+        },
+        {
+          type: 'product', position: 2, description: 'PSE BAUMIT PROTHERM R=4.50 (fourniture)',
+          quantity: 1, sellPrice: 2086,
+          unit: { id: 'unit_m2', symbol: 'm²' }, tax: { id: 'tx_10' },
+          product: { id: 'prod_fourniture', name: 'PSE BAUMIT' },
+          // --- nature FOURNITURE : deboursé porté par la LIGNE (pas de supplies) ---
+          productType: 'supply', buyPrice: 1490,
         },
       ],
     },
@@ -55,6 +65,7 @@ export async function testOuvrages(): Promise<Resultat[]> {
   walk(lignes)
   const ouvrage = produits.find((p) => p.product === 'prod_ite')
   const plat = produits.find((p) => p.product === 'prod_plat')
+  const fourniture = produits.find((p) => p.product === 'prod_fourniture')
 
   res.push(
     ouvrage ? ok('A5 ouvrage reconstruit (qté 50)') : ko('A5 ouvrage reconstruit', `produits=${produits.map((p) => p.product)}`),
@@ -87,6 +98,12 @@ export async function testOuvrages(): Promise<Resultat[]> {
     plat && plat.productType === undefined && plat.supplies === undefined && plat.buyPrice === undefined && plat.sellPriceForced === undefined
       ? ok('A5 ligne plate : aucun champ ouvrage (non-regression)')
       : ko('A5 ligne plate non-regression', JSON.stringify({ pt: plat?.productType, sup: plat?.supplies, bp: plat?.buyPrice, f: plat?.sellPriceForced })),
+  )
+  res.push(
+    fourniture && fourniture.productType === 'supply' && fourniture.buyPrice === 1490 &&
+      fourniture.supplies === undefined && fourniture.sellPriceForced === undefined
+      ? ok('A5 fourniture : productType "supply" + buyPrice (déboursé 14,90€) transmis (correctif fournitures 0€)')
+      : ko('A5 fourniture : déboursé transmis', JSON.stringify({ pt: fourniture?.productType, bp: fourniture?.buyPrice, sup: fourniture?.supplies, f: fourniture?.sellPriceForced })),
   )
   return res
 }
