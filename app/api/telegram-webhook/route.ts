@@ -46,6 +46,21 @@ const PROMPT_REPONDRE = '✍️ Réponse à ta dernière demande'
 const QUESTION_NOUVEAU = `${PROMPT_NOUVEAU} — écris ton message pour Olivier (texte ou vocal). Le titre et la catégorie seront ajoutés automatiquement.`
 const QUESTION_REPONDRE = `${PROMPT_REPONDRE} — écris ta réponse (texte ou vocal). Elle ira sur ta demande la plus récente.`
 
+// Étape de RELECTURE d'un vocal : après transcription, on renvoie le texte à Julien
+// pour qu'il valide (/ok) ou corrige AVANT envoi à Olivier. Sans état : le texte
+// proposé ET la cible sont portés par le message lui-même. On reconnaît une réponse
+// de relecture au fait que reply_to_message.text commence par RELECTURE_PREFIX ; le
+// mode (nouvelle demande / réponse / fil précis) par l'en-tête exact.
+const RELECTURE_PREFIX = '🎤 Relecture'
+const RELECTURE_NOUVEAU = '🎤 Relecture — nouvelle demande'
+const RELECTURE_REPONDRE = '🎤 Relecture — réponse (dernière demande)'
+const RELECTURE_TICKET_PREFIX = '🎤 Relecture — réponse (fil #' // suivi de <message_id>)
+
+// Message de relecture : en-tête (= la cible) + transcription entre « », + consigne.
+function messageRelecture(entete: string, transcription: string): string {
+  return `${entete}\n« ${transcription} »\n\n✅ Réponds /ok pour envoyer à Olivier, ou réécris (ou re-dicte) le texte corrigé.`
+}
+
 // Repond l'id du salon courant (aide au setup d'un groupe : "/chatid" -> id du
 // salon, pour router les notifications vers un groupe). Best-effort.
 async function repondreChatId(chatId: string | number): Promise<void> {
@@ -180,6 +195,34 @@ async function traiterRepondre(corps: string): Promise<void> {
   )
 }
 
+// Ajoute un message de Julien à un fil précis + rallume la pastille chez Olivier.
+async function ajouterMessageAuTicket(ticketId: string, corps: string): Promise<void> {
+  const admin = createAdminClient()
+  const nowIso = new Date().toISOString()
+  await admin
+    .from('ticket_messages')
+    .insert({ ticket_id: ticketId, auteur: 'julien', texte: corps.slice(0, 8000) })
+  await admin
+    .from('tickets')
+    .update({ statut: 'ouvert', lu_par_olivier: false, derniere_activite_le: nowIso })
+    .eq('id', ticketId)
+}
+
+// Répond au fil identifié par le message_id Telegram d'origine (celui auquel Julien
+// avait répondu). Renvoie false si le fil n'existe plus. Sert au parcours de
+// relecture d'un vocal répondant à un ticket précis.
+async function repondreTicketParSource(sourceMessageId: number, corps: string): Promise<boolean> {
+  const admin = createAdminClient()
+  const { data: mm } = await admin
+    .from('ticket_messages')
+    .select('ticket_id')
+    .eq('telegram_message_id', sourceMessageId)
+    .maybeSingle()
+  if (!mm) return false
+  await ajouterMessageAuTicket(mm.ticket_id as string, corps)
+  return true
+}
+
 export async function POST(request: Request) {
   // 1) Securite : secret token (configure au setWebhook, renvoye par Telegram).
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim()
@@ -214,30 +257,77 @@ export async function POST(request: Request) {
     if (String(msg.chat?.id ?? '') !== chatId) return ok()
 
     const texteMsg = (msg.text ?? '').trim()
-
-    // Corps saisi = texte tapé, ou vocal Telegram transcrit (Julien peut dicter).
     const fileIdEntrant = msg.voice?.file_id || msg.audio?.file_id
-    const corpsSaisi = async (texte: string): Promise<{ texte: string; vocal: boolean }> => {
-      if (texte) return { texte, vocal: false }
-      if (fileIdEntrant) return { texte: (await transcrireVocalTelegram(fileIdEntrant)).trim(), vocal: true }
-      return { texte: '', vocal: false }
-    }
-
-    // 2a) Réponse au mode GUIDÉ : Julien répond à une question du bot (force_reply).
-    //     On reconnaît la question au texte cité. Traité AVANT le matching ticket.
     const texteCite = msg.reply_to_message?.text ?? ''
-    if (texteCite.startsWith(PROMPT_NOUVEAU) || texteCite.startsWith(PROMPT_REPONDRE)) {
-      const { texte: corps } = await corpsSaisi(texteMsg)
-      if (!corps) {
-        await sendTelegram('ℹ️ Je n’ai rien reçu. Relance avec /nouveau ou /repondre.')
+
+    // 2a) RELECTURE d'un vocal : Julien répond à un message « 🎤 Relecture … ».
+    //     /ok -> on envoie la transcription proposée ; texte -> correction ; vocal ->
+    //     nouvelle transcription re-proposée. La cible (nouvelle demande / réponse /
+    //     fil précis) est portée par l'en-tête du message cité.
+    if (texteCite.startsWith(RELECTURE_PREFIX)) {
+      const entete = texteCite.startsWith(RELECTURE_NOUVEAU)
+        ? RELECTURE_NOUVEAU
+        : texteCite.startsWith(RELECTURE_REPONDRE)
+          ? RELECTURE_REPONDRE
+          : texteCite.slice(0, texteCite.indexOf('\n') === -1 ? undefined : texteCite.indexOf('\n'))
+
+      // Re-dictée : Julien renvoie un vocal -> on re-transcrit et on re-propose.
+      if (!texteMsg && fileIdEntrant) {
+        const retr = (await transcrireVocalTelegram(fileIdEntrant)).trim()
+        if (!retr) {
+          await sendTelegram('ℹ️ Je n’ai pas compris le vocal. Réessaie.')
+          return ok()
+        }
+        await sendTelegramForceReply(messageRelecture(entete, retr))
         return ok()
       }
-      if (texteCite.startsWith(PROMPT_NOUVEAU)) await traiterNouveau(corps)
-      else await traiterRepondre(corps)
+
+      // /ok -> transcription proposée (extraite du message cité) ; sinon -> correction tapée.
+      const proposee = (texteCite.match(/«\s*([\s\S]*?)\s*»/)?.[1] ?? '').trim()
+      // /ok (ou "ok") SEUL = valider la transcription ; tout autre texte = correction.
+      const estOk = /^\/?ok$/i.test(texteMsg)
+      const corps = estOk ? proposee : texteMsg
+      if (!corps) {
+        await sendTelegram('ℹ️ Rien à envoyer. Réponds /ok pour valider, ou réécris le texte.')
+        return ok()
+      }
+      if (entete.startsWith(RELECTURE_NOUVEAU)) {
+        await traiterNouveau(corps)
+      } else if (entete.startsWith(RELECTURE_REPONDRE)) {
+        await traiterRepondre(corps)
+      } else {
+        const idSource = Number(entete.match(/#(\d+)\)/)?.[1])
+        const okFil = Number.isFinite(idSource) && (await repondreTicketParSource(idSource, corps))
+        await sendTelegram(okFil ? '✅ Réponse transmise à Olivier.' : 'ℹ️ Fil introuvable (déjà clos ?).')
+      }
       return ok()
     }
 
-    // 2b) /nouveau : mode guidé (question) si rien après, sinon raccourci direct.
+    // 2b) Réponse au mode GUIDÉ : Julien répond à une question du bot (force_reply).
+    //     Texte -> envoi direct ; vocal -> on transcrit puis on propose la RELECTURE.
+    if (texteCite.startsWith(PROMPT_NOUVEAU) || texteCite.startsWith(PROMPT_REPONDRE)) {
+      const versNouveau = texteCite.startsWith(PROMPT_NOUVEAU)
+      if (texteMsg) {
+        if (versNouveau) await traiterNouveau(texteMsg)
+        else await traiterRepondre(texteMsg)
+        return ok()
+      }
+      if (fileIdEntrant) {
+        const tr = (await transcrireVocalTelegram(fileIdEntrant)).trim()
+        if (!tr) {
+          await sendTelegram('ℹ️ Je n’ai pas compris le vocal. Réessaie.')
+          return ok()
+        }
+        await sendTelegramForceReply(
+          messageRelecture(versNouveau ? RELECTURE_NOUVEAU : RELECTURE_REPONDRE, tr),
+        )
+        return ok()
+      }
+      await sendTelegram('ℹ️ Je n’ai rien reçu. Relance avec /nouveau ou /repondre.')
+      return ok()
+    }
+
+    // 2c) /nouveau : mode guidé (question) si rien après, sinon raccourci direct.
     const mNouveau = texteMsg.match(/^\/(nouveau|nouvelle|new|demande)\b\s*([\s\S]*)$/i)
     if (mNouveau) {
       const corps = mNouveau[2].trim()
@@ -246,7 +336,7 @@ export async function POST(request: Request) {
       return ok()
     }
 
-    // 2c) /repondre : mode guidé si rien après, sinon raccourci direct.
+    // 2d) /repondre : mode guidé si rien après, sinon raccourci direct.
     const mRepondre = texteMsg.match(/^\/(repondre|reponse|rep)\b\s*([\s\S]*)$/i)
     if (mRepondre) {
       const corps = mRepondre[2].trim()
@@ -273,8 +363,7 @@ export async function POST(request: Request) {
     const nowIso = new Date().toISOString()
 
     // 5) Commande de clôture : "/resolu" (ou /ferme) en réponse à un message du fil.
-    const texteReply = (msg.text ?? '').trim()
-    if (/^\/(resolu|resolue|ferme|close)\b/i.test(texteReply)) {
+    if (/^\/(resolu|resolue|ferme|close)\b/i.test(texteMsg)) {
       await admin
         .from('tickets')
         .update({ statut: 'resolu', derniere_activite_le: nowIso })
@@ -283,34 +372,23 @@ export async function POST(request: Request) {
       return ok()
     }
 
-    // 6) Réponse = texte tapé, OU vocal transcrit (Julien répond à la voix ; Olivier
-    //    voit toujours du texte, nettoyé). On AJOUTE au fil (pas d'écrasement).
-    let reponseTexte = texteReply
-    let estVocal = false
-    const fileId = msg.voice?.file_id || msg.audio?.file_id
-    if (!reponseTexte && fileId) {
-      estVocal = true
-      reponseTexte = await transcrireVocalTelegram(fileId)
+    // 6) Vocal en réponse à un fil -> on transcrit puis on propose la RELECTURE
+    //    (envoi seulement après /ok ou correction). On mémorise la cible (ce fil)
+    //    via le message_id d'origine dans l'en-tête de relecture.
+    if (!texteMsg && fileIdEntrant) {
+      const tr = (await transcrireVocalTelegram(fileIdEntrant)).trim()
+      if (!tr) {
+        await sendTelegram('ℹ️ Je n’ai pas compris le vocal. Réessaie.')
+        return ok()
+      }
+      await sendTelegramForceReply(messageRelecture(`${RELECTURE_TICKET_PREFIX}${replyToId})`, tr))
+      return ok()
     }
-    if (!reponseTexte) return ok()
 
-    await admin.from('ticket_messages').insert({
-      ticket_id: ticketId,
-      auteur: 'julien',
-      texte: reponseTexte.slice(0, 8000),
-    })
-    // Le fil redevient ouvert (relance) + remonte + pastille non-lu côté Olivier.
-    await admin
-      .from('tickets')
-      .update({ statut: 'ouvert', lu_par_olivier: false, derniere_activite_le: nowIso })
-      .eq('id', ticketId)
-
-    // 7) Accuse de reception a Julien (best-effort).
-    await sendTelegram(
-      estVocal
-        ? '✅ Réponse vocale transcrite et transmise à Olivier.'
-        : '✅ Réponse transmise à Olivier.',
-    )
+    // 7) Réponse texte -> ajout direct au fil + accusé.
+    if (!texteMsg) return ok()
+    await ajouterMessageAuTicket(ticketId, texteMsg)
+    await sendTelegram('✅ Réponse transmise à Olivier.')
     return ok()
   } catch (e) {
     console.error('[api/telegram-webhook]', e)
