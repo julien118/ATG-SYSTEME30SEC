@@ -101,6 +101,33 @@ export async function sendTelegramAvecId(
 }
 
 /**
+ * Envoie un message en activant le « force reply » de Telegram : le client Telegram
+ * ouvre automatiquement le champ de reponse rattache a CE message. Sert au mode
+ * guide (Julien tape /nouveau -> le bot pose la question -> sa reponse arrive comme
+ * un reply_to_message qu'on reconnait par son texte). Best-effort : ne throw jamais.
+ */
+export async function sendTelegramForceReply(text: string): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim()
+  const chatId = process.env.TELEGRAM_CHAT_ID?.trim()
+  if (!token || !chatId) return
+  try {
+    await fetchAvecTimeout(`${TELEGRAM_API}/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+        reply_markup: { force_reply: true, input_field_placeholder: 'Ton message…' },
+      }),
+    })
+  } catch {
+    // best-effort
+  }
+}
+
+/**
  * Envoie un fichier audio (le vocal d'Olivier) sur Telegram, en reponse au message
  * du ticket (`replyToMessageId`) pour le rattacher visuellement. OGG/OPUS -> message
  * vocal natif (sendVoice) ; tout autre format (webm/mp4...) -> document audio jouable
