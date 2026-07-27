@@ -501,13 +501,13 @@ export default function AssistantTicket({ className = '' }: { className?: string
                       <div key={m.id} className="space-y-1">
                         <div className={`flex ${m.auteur === 'olivier' ? 'justify-end' : 'justify-start'}`}>
                           <div
-                            className={`max-w-[85%] px-3.5 py-2.5 text-sm leading-relaxed shadow-sm whitespace-pre-wrap ${
+                            className={`max-w-[85%] px-3.5 py-2.5 text-sm leading-relaxed shadow-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${
                               m.auteur === 'olivier'
                                 ? 'bg-primary text-white rounded-2xl rounded-br-md'
                                 : 'bg-white text-foreground border border-border rounded-2xl rounded-bl-md'
                             }`}
                           >
-                            {m.texte}
+                            <MessageContenu texte={m.texte} sombre={m.auteur === 'olivier'} />
                           </div>
                         </div>
                         <p className={`text-[11px] text-gray-400 ${m.auteur === 'olivier' ? 'text-right pr-1' : 'pl-1'}`}>
@@ -629,6 +629,97 @@ function Composer({
         </p>
       )}
     </div>
+  )
+}
+
+// ---------- Rendu du contenu d'un message (liens + miniatures Loom) ----------
+
+// Découpe un texte en segments : liens Loom (miniature cliquable), autres URL
+// (lien cliquable qui va à la ligne au lieu de déborder), et texte simple.
+// Un lien Loom ressemble à https://www.loom.com/share/<id 20+ hex>[?params].
+const RE_URL = /https?:\/\/[^\s]+/g
+const RE_LOOM = /^https?:\/\/(?:www\.)?loom\.com\/(?:share|embed)\/([a-f0-9]{20,})/i
+
+function loomId(url: string): string | null {
+  const m = url.match(RE_LOOM)
+  return m ? m[1] : null
+}
+
+function MessageContenu({ texte, sombre }: { texte: string; sombre: boolean }) {
+  const segments: React.ReactNode[] = []
+  let dernier = 0
+  let i = 0
+  // Réinitialise l'état du regex global entre deux rendus.
+  RE_URL.lastIndex = 0
+  for (const m of Array.from(texte.matchAll(RE_URL))) {
+    const url = m[0]
+    const debut = m.index ?? 0
+    if (debut > dernier) segments.push(texte.slice(dernier, debut))
+    const id = loomId(url)
+    if (id) {
+      segments.push(<LoomMiniature key={`loom-${i}`} id={id} url={url} />)
+    } else {
+      segments.push(
+        <a
+          key={`url-${i}`}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`underline underline-offset-2 break-all ${sombre ? 'text-white/90' : 'text-primary'}`}
+        >
+          {url}
+        </a>,
+      )
+    }
+    dernier = debut + url.length
+    i++
+  }
+  if (dernier < texte.length) segments.push(texte.slice(dernier))
+  return <>{segments}</>
+}
+
+// Miniature Loom cliquable : image de prévisualisation (avec pastille lecture)
+// servie par le CDN Loom, qui ouvre la vidéo dans un nouvel onglet au clic.
+function LoomMiniature({ id, url }: { id: string; url: string }) {
+  const [erreur, setErreur] = useState(false)
+  if (erreur) {
+    // Fallback si la miniature ne charge pas : un bouton lecture clair, jamais une URL nue.
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="my-1 flex items-center gap-2 rounded-xl bg-black/80 px-3 py-2 text-white no-underline"
+      >
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20">▶</span>
+        <span className="text-sm font-medium">Voir la vidéo Loom</span>
+      </a>
+    )
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Voir la vidéo Loom"
+      className="my-1 block max-w-full overflow-hidden rounded-xl bg-black/90 no-underline"
+    >
+      <span className="relative block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`https://cdn.loom.com/sessions/thumbnails/${id}-with-play.jpg`}
+          alt="Vidéo Loom — cliquer pour lire"
+          className="block h-auto w-full max-w-[280px]"
+          loading="lazy"
+          onError={() => setErreur(true)}
+        />
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/55 text-xl text-white shadow-lg backdrop-blur-sm">
+            ▶
+          </span>
+        </span>
+      </span>
+    </a>
   )
 }
 
