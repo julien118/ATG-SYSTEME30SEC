@@ -62,19 +62,51 @@ export async function POST(request: Request) {
     .order('position', { ascending: true })
 
   if (!captures || captures.length === 0) {
-    return NextResponse.json({ error: 'No captures found' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'No captures found', code: 'aucune_capture' },
+      { status: 400 },
+    )
   }
 
   // Build prompt (avec les consignes de modification si fournies, amelioration 11).
   const userPrompt = buildUserPrompt(chantier as Chantier, captures as CaptureItem[], consignes)
 
   // Call Claude
+  // max_tokens releve de 4096 a 16000 : a 4096, un RDV avec beaucoup de photos
+  // (ex : 21 photos) faisait depasser le plafond de sortie, le JSON etait coupe
+  // en plein milieu et le rapport ne se generait jamais. 16000 couvre ~50 photos,
+  // largement au-dela d'une visite reelle, tout en restant sous le seuil de
+  // timeout du mode non-streaming (~16k). Cout inchange : on paie le token
+  // reellement produit, pas le plafond.
   const response = await anthropic.messages.create({
     model: MODELE_CLAUDE,
-    max_tokens: 4096,
+    max_tokens: 16000,
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: userPrompt }],
   })
+
+  // Garde-fou troncature : si Claude atteint quand meme le plafond (stop_reason
+  // "max_tokens"), le JSON est coupe -> le parsing echouerait avec une erreur
+  // technique opaque ("Report generation failed"). On detecte le cas AVANT le
+  // parsing et on renvoie un code clair, pour qu'Olivier voie un message simple
+  // ("trop de photos/observations") et sache quoi dire a Julien. A 16000 tokens
+  // ce cas est tres improbable, mais s'il arrive on ne le rate plus.
+  if (response.stop_reason === 'max_tokens') {
+    const nbPhotos = (captures as CaptureItem[]).filter(
+      (c) => c.type === 'photo' && c.photo_url,
+    ).length
+    console.error(
+      `[api/generate-report] rapport tronque (stop_reason=max_tokens) — ${captures.length} captures dont ${nbPhotos} photos, chantier ${chantierId}`,
+    )
+    await reportError(
+      'Rapport trop volumineux',
+      new Error(`Troncature max_tokens — ${nbPhotos} photos, ${captures.length} captures`),
+    )
+    return NextResponse.json(
+      { error: 'Rapport trop volumineux', code: 'trop_volumineux' },
+      { status: 400 },
+    )
+  }
 
   // Parse response
   const responseText = response.content[0].type === 'text' ? response.content[0].text : ''

@@ -141,7 +141,15 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
       clearInterval(stepInterval)
 
       if (!res.ok) {
-        const msg = 'La génération a échoué. Réessayez.'
+        // Message simple et NON technique pour Olivier, avec une piste concrete a
+        // transmettre a Julien selon la cause renvoyee par l'API (champ `code`).
+        let code: string | undefined
+        try { code = (await res.json())?.code } catch { /* corps illisible : on retombe sur le message generique */ }
+        const msg = code === 'trop_volumineux'
+          ? "Ce rendez-vous contient beaucoup de photos et d'observations : l'assistant n'a pas réussi à tout réunir dans un seul compte rendu. Prévenez Julien en lui indiquant le nom de ce rendez-vous."
+          : code === 'aucune_capture'
+          ? "Aucune photo ni note vocale n'a été enregistrée pour ce rendez-vous : impossible de créer le compte rendu. Ajoutez au moins une photo ou une observation, puis réessayez."
+          : "Le compte rendu n'a pas pu être généré. Réessayez dans un instant. Si le problème persiste, prévenez Julien en lui indiquant le nom de ce rendez-vous."
         setError(msg)
         toast.show(msg, 'error')
         setGenerating(false)
