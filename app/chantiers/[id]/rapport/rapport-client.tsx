@@ -132,11 +132,15 @@ export default function RapportClient({ chantierId, initialRapport, heureVisite,
     }, 3000)
 
     try {
+      // 180 s (au lieu de 60 s) : un RDV très fourni en photos prend plus de
+      // temps (génération du rapport + fabrication du PDF des photos). A 60 s le
+      // navigateur abandonnait alors que le serveur avait réussi, affichant une
+      // fausse erreur « prend trop de temps ». Aligné sur le maxDuration serveur.
       const res = await fetchWithTimeout('/api/generate-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chantierId, consignes: consignesArg ?? null }),
-      }, 60000)
+      }, 180000)
 
       clearInterval(stepInterval)
 

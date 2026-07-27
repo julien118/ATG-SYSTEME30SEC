@@ -9,6 +9,12 @@ import { nettoyerRapportContenu } from '@/lib/utils'
 import { reportError } from '@/lib/monitoring'
 import type { Chantier, CaptureItem, RapportContenu } from '@/lib/types'
 
+// Un RDV très fourni (beaucoup de photos) enchaîne un appel Claude plus long
+// PUIS la fabrication du PDF (récupération des photos une à une) : l'ensemble
+// peut dépasser 60 s. On donne 180 s à la fonction serverless pour finir sans
+// être coupée (le défaut peut être plus bas selon le plan).
+export const maxDuration = 180
+
 // Mode démo ATG : pas de check d'auth, pas de limite "2 rapports".
 export async function POST(request: Request) {
   try {
