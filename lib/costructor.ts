@@ -343,6 +343,78 @@ export function parseAdresseFr(adresse: string | null | undefined): {
   return { street: a, city: '', zip: '' }
 }
 
+// Codes `civility` acceptés par l'API Costructor (enum). m=Monsieur, f=Madame,
+// mf=M. et Mme, fm=Mme et M., mm=Messieurs, ff=Mesdames. Toute autre valeur → 400.
+export type CivilityCode = 'm' | 'f' | 'mf' | 'fm' | 'mm' | 'ff'
+
+// Jetons de civilité en tête de nom → genre unitaire ('m' | 'f'), ou paire
+// (messieurs/mesdames). On tolère la casse, les accents et le point final.
+const CIVILITE_GENRE: Record<string, 'm' | 'f' | 'mm' | 'ff'> = {
+  m: 'm', mr: 'm', monsieur: 'm',
+  mme: 'f', madame: 'f', mlle: 'f', melle: 'f', mademoiselle: 'f',
+  mm: 'mm', messieurs: 'mm',
+  mmes: 'ff', mesdames: 'ff',
+}
+
+// Résultat du parsing d'un `client_nom` libre en champs Costructor.
+export interface NomClientParse {
+  civility?: CivilityCode
+  firstName: string
+  lastName: string
+}
+
+// Corrige le problème « M.mme [NOM] » : au push, on extrait la CIVILITÉ en tête
+// de `client_nom` vers le champ `civility` de Costructor (au lieu de la coller
+// dans lastName). Règles (prudentes, non-cassantes) :
+//   - Détecte une civilité EN TÊTE (m/f/couple), la retire, met le reste en nom.
+//   - AUCUNE civilité détectée → comportement historique STRICTEMENT inchangé
+//     (tout dans lastName, `civility` non envoyée) : les noms de chantier type
+//     « Daquin Résidence Charles » ne bougent pas.
+//   - Prénom : découpé UNIQUEMENT si civilité singulier (m/f) ET exactement 2
+//     mots restants (« M. Jean Dupont » → prénom Jean, nom Dupont). Les couples
+//     (mf) et tout le reste → nom complet dans lastName (zéro split hasardeux).
+export function parseNomClient(nomBrut: string | null | undefined): NomClientParse {
+  const raw = (nomBrut ?? '').trim()
+  if (!raw) return { firstName: '', lastName: '' }
+
+  // Sépare les formes collées ("M.mme" → "M. mme") et les "&" ("M & Mme").
+  const prepped = raw.replace(/\./g, '. ').replace(/&/g, ' et ').replace(/\s+/g, ' ').trim()
+  const tokens = prepped.split(' ').filter(Boolean)
+  const norm = (t: string) =>
+    t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\./g, '')
+
+  // Consomme les jetons de civilité en tête (avec connecteurs "et"/"&").
+  const genres: Array<'m' | 'f'> = []
+  let i = 0
+  for (; i < tokens.length; i++) {
+    const n = norm(tokens[i])
+    if (n === 'et' || n === '') {
+      if (genres.length === 0) break // "et" avant toute civilité → pas une civilité
+      continue
+    }
+    const g = CIVILITE_GENRE[n]
+    if (!g) break
+    if (g === 'mm') genres.push('m', 'm')
+    else if (g === 'ff') genres.push('f', 'f')
+    else genres.push(g)
+  }
+
+  // Aucune civilité en tête → comportement actuel inchangé (raw intact, dots compris).
+  if (genres.length === 0) return { firstName: '', lastName: raw }
+
+  const civility = (genres.length === 1 ? genres[0] : genres[0] + genres[1]) as CivilityCode
+  const reste = tokens.slice(i).filter(Boolean)
+
+  // Split prénom/nom seulement si civilité singulier ET exactement 2 mots restants.
+  if ((civility === 'm' || civility === 'f') && reste.length === 2) {
+    return { civility, firstName: reste[0], lastName: reste[1] }
+  }
+  // Sinon : tout le reste dans lastName. Si le reste est vide (nom = civilité
+  // seule, cas dégénéré), on retombe sur le nom brut pour ne pas créer un nom vide.
+  const lastName = reste.join(' ').trim() || raw
+  return { civility, firstName: '', lastName }
+}
+
 // T2 : assainit un téléphone AVANT envoi à Costructor. L'API rejette les
 // numéros avec espaces/séparateurs ("06 12 34 56 78" → 400 phone_number.invalid).
 // On ne garde que les chiffres en PRÉSERVANT le 0 de tête (≠ normaliserTelephone
@@ -432,9 +504,10 @@ export async function trouverOuCreerContact(
   }
 
   // 4) Aucun match → création (écriture : protégée par la RÈGLE 1).
-  // On met tout `client_nom` dans lastName et firstName='' : Costructor accepte
-  // et fullName devient juste "client_nom" (au lieu d'un split qui produit des
-  // noms moches du type "Daquin Résidence Charles" pour les noms de chantier).
+  // On parse `client_nom` pour extraire la CIVILITÉ en tête vers le champ dédié
+  // `civility` (fin du « M.mme Hosselet » collé dans le nom). Sans civilité
+  // détectée, `parseNomClient` renvoie tout dans lastName → comportement
+  // historique inchangé (pas de split moche des noms de chantier "Daquin …").
   assertCompteJulien() // T3 : refuse la clé d'Olivier avant toute écriture
   bannerCompte('ÉCRITURE')
   const email = input.client_email?.trim()
@@ -442,12 +515,14 @@ export async function trouverOuCreerContact(
   // formats français saisis avec espaces ("06 12 34 56 78").
   const phone = assainirTelephonePourEnvoi(input.client_telephone)
 
+  const { civility, firstName, lastName } = parseNomClient(input.client_nom)
   const body: Record<string, unknown> = {
     type: 'client',
     legalStatus: 'individual',
-    firstName: '',
-    lastName: input.client_nom.trim(),
+    firstName,
+    lastName,
   }
+  if (civility) body.civility = civility
   if (street || city || zip) {
     body.addresses = [
       {
