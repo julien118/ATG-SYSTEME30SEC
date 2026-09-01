@@ -186,3 +186,36 @@ Reprise sur `main` (Phase 1 + Phase 2 mergées entre temps). 3 améliorations li
    - Tout se passe dans `lib/atg-devis-structure.ts`, c'est conçu pour.
 3. **Optimiser `listerContacts()`.** Charge tous les contacts à chaque push (les filtres serveur Costructor sont ignorés, cf. piège #9). OK sur le démo (5 contacts), problématique sur le compte d'Olivier (potentiellement des centaines de clients). Pistes : pagination + cache local Supabase + index sur les colonnes de matching. À traiter avant la bascule sinon les push deviendront lents et le risque de doublon augmente avec la taille de la base.
 4. **Nettoyer les doublons dans `bibliotheque_costructor`.** Audit du 2026-05-25 : sur les 21 lignes, 7 libellés sont en doublon avec deux `costructor_article_id` distincts chacun (Échafaudage façade -8m, Imperméabilité I3, Imperméabilité I4, Installation et repli, Peinture décorative 2 couches, Protections et bâchage, Ravalement minéral). Trace probable de deux imports successifs. Le UNIQUE sur `costructor_article_id` n'empêche pas ces doublons-là (IDs différents). Conséquence : le matching libellé → article dans `lib/quote-proposer.ts` est ambigu, le premier article rencontré gagne. À nettoyer avant la bascule en gardant l'ID Costructor effectivement présent dans la bibliothèque d'Olivier (à vérifier au kickoff — probablement les IDs `prod_01krjzeb…` qui correspondent au compte d'Olivier, pas `prod_01krjxnz…`).
+
+---
+
+## 2026-09-01 — Boutons « nouvel onglet » CR ↔ devis · fix routing « devis envoyé » · MàJ doc · réponse support
+
+> Session de reprise (Claude). DEVLOG en sommeil depuis mai (supplanté par `REPRISE-SYSTEME.md`).
+> L'outil tourne en **production** chez Olivier GRAVIOU (ATG Ravalement).
+
+### 0. Découvertes de contexte (importantes pour les prochaines sessions)
+- **Le vrai projet Supabase de PROD = `bwysqnfdhdnwcmteyuph`** (« ATG-SYSTEME30SEC-PROD », créé le 2026-06-17). ⚠️ `env.txt` **et** `REPRISE-SYSTEME.md` pointent encore l'ancien projet **`rgloyviokgmzaevliqmr` qui est MORT** (NXDOMAIN). URL de prod confirmée en lisant le bundle JS du site live.
+- **L'auth n'est plus « bypassée » en prod** : `middleware.ts` + `lib/auth-gate.ts` imposent un vrai login email + mot de passe (`/login`, session signée par cookie). Le « single-user passthrough » décrit dans REPRISE ne reflète plus la prod.
+- Conséquence : **dev local impraticable sur cette machine** — `env.txt` inutilisable (projet mort), pas de `.env.local`, `vercel env pull` prod refusé (garde-fou secrets + règle « dev = compte test »), et login requis. Validation faite via **build Vercel**, aperçu statique HTML, et contrôle direct en prod par Julien.
+
+### 1. `CLAUDE.md` remis à jour (commit `0335c3d`)
+Décrivait encore la « version démo ». Réécrit pour refléter la prod : retrait de la règle démo « limite 2 rapports » (déjà absente du code, cf. `app/api/generate-report/route.ts`), redirection vers `REPRISE-SYSTEME.md` comme source de vérité, ajout du contexte prod (écriture réelle Costructor, single-user/RLS, modèle Claude centralisé, support, observabilité) + bloc sécurité (rester compte test en local).
+
+### 2. Feature — ouvrir le compte rendu / le devis dans un nouvel onglet (commit `50d96f5`)
+**Demande d'Olivier** (ticket « Impossible d'ouvrir les rapports », 27/07/2026) : garder le CR visible sur un 2e écran pendant la saisie/finalisation du devis, et le rouvrir après l'envoi Costructor. Jusqu'ici le CR n'était accessible que par la flèche « retour » (navigation qui REMPLACE l'écran) — impossible de le garder ouvert à côté.
+- `components/BoutonCompteRendu.tsx` (nouveau) : ouvre le CR en **nouvel onglet** via le lien court `/r/[id]` (302 → PDF, persisté dès la génération par `persistRapportPdf`) ; repli `/chantiers/[id]/rapport` si `pdf_url` absent. Variantes `header` / `card`. Ajouté au header de `app/chantiers/[id]/devis/page.tsx` (saisie) et `…/devis/recap/page.tsx` (récap) **+** dans le bloc de confirmation post-push (« Brouillon créé dans Costructor »).
+- `components/BoutonVoirDevis.tsx` (nouveau) : bouton symétrique sur `app/chantiers/[id]/rapport/page.tsx`, ouvre `/chantiers/[id]/devis/recap` en nouvel onglet ; affiché seulement si `aDevis`.
+- Purement additif, aucune logique métier touchée. Rebase propre sur 7 commits poussés en parallèle par Julien (0 conflit, fichiers disjoints). Build Vercel prod : **Ready**.
+
+### 3. Fix — « devis envoyé » ouvrait l'éditeur au lieu de la visualisation (commit `e72e802`)
+`components/ChantierCard.tsx` / `getChantierHref` : depuis le dashboard, un chantier en statut `devis_envoye` (devis poussé Costructor) menait à `/devis` (proposition technique / éditeur) au lieu de la visualisation du devis réalisé. Désormais `devis_envoye` → `/chantiers/[id]/devis/recap` ; `devis_en_cours` reste sur l'éditeur pour le continuer. Remonté par Olivier (chantier « Lefay Pascal »). Build Vercel prod : **Ready**.
+
+### 4. Réponse à Olivier dans le support (écriture DB de prod)
+Déposé sur le fil « Impossible d'ouvrir les rapports » (id `8d8a1fee…`) un message `auteur='julien'` + lien Loom, en reproduisant `ajouterMessageAuTicket` du webhook Telegram : `insert ticket_messages` + `update tickets set statut='ouvert', lu_par_olivier=false, derniere_activite_le=now()` (rallume la pastille « Julien vous a répondu »). Après la vérif de Julien (qui avait marqué le fil comme lu), remis `lu_par_olivier=false` pour restaurer la notification « 1 ».
+- **Rappel** : le support vit dans le projet Supabase prod `bwysqnfdhdnwcmteyuph`, tables `tickets` + `ticket_messages` (`auteur` ∈ {`olivier`, `julien`}). Accès via le MCP Supabase (le connecteur claude.ai peut expirer → reconnecter côté Claude, PAS via un lien OAuth `mcp.supabase.com` qui renvoie « Unrecognized client_id »).
+
+### En suspens (proposé, non fait)
+- Nettoyer `env.txt` + `REPRISE-SYSTEME.md` (ref projet Supabase mort + auth « bypassée » périmée).
+- Marquer le ticket « Correction civilité devis Costructor » comme résolu (dernier message = simple remerciement d'Olivier).
+- Julien a poussé en parallèle des correctifs d'autres tickets d'Olivier : civilité au push, fournitures à 0 €, rapports bloqués sur RDV riches en photos, réponses support depuis Telegram (commits `46ab938`…`8ca0844`).

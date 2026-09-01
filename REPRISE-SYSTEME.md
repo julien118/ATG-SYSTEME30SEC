@@ -1,7 +1,8 @@
 # REPRISE — État du système ATG « Système 30 Secondes »
 
-> Document de reprise consolidé (2026-06-16). Photo complète du système au moment où Julien
-> reprend la main. À lire avec `DEVLOG.md` (journal technique), `STYLE-OLIVIER.md` (style des
+> Document de reprise consolidé (2026-06-16), **partiellement mis à jour le 2026-09-01**
+> (réf. Supabase de prod + auth login — voir « Stack & contexte d'exécution »). Photo complète
+> du système au moment où Julien reprend la main. À lire avec `DEVLOG.md` (journal technique), `STYLE-OLIVIER.md` (style des
 > devis d'Olivier) et la mémoire projet (`~/.claude/projects/.../memory/`, index `MEMORY.md`).
 > **Aucun secret ni donnée client réelle ici** (sûr à committer). Les clés vivent dans
 > `.env.local` (gitignoré) ; la structure commerciale d'Olivier dans `DECOUVERTE-COMPTE-OLIVIER.md`
@@ -21,17 +22,20 @@ son CRM/logiciel de devis Costructor.**
 
 **Stack & contexte d'exécution**
 - Next.js 14 (App Router) + TypeScript strict + Tailwind, mobile-first.
-- **Supabase** projet ATG dédié `rgloyviokgmzaevliqmr` (Postgres + Storage). ⚠️ pas joignable
-  via le MCP Supabase connecté (qui pointe d'autres projets) — DDL/migrations passent par le
-  canal SQL Editor habituel.
+- **Supabase** projet ATG de prod `bwysqnfdhdnwcmteyuph` (« ATG-SYSTEME30SEC-PROD », Postgres +
+  Storage), accessible via le MCP Supabase. ⚠️ L'ancienne réf `rgloyviokgmzaevliqmr` est **MORTE**
+  (NXDOMAIN) — ne plus l'utiliser (elle traîne encore dans `env.txt`, à corriger avec les clés du
+  nouveau projet).
 - **Claude** pour toute la couche IA. Modèle centralisé : `MODELE_CLAUDE = 'claude-sonnet-4-6'`
   dans [lib/anthropic.ts](lib/anthropic.ts) — **point unique** importé par ~11 fichiers (une
   retraite de modèle = 1 seul changement). *(Incident 2026-06-15 : l'ancien `claude-sonnet-4-20250514`
   a été retiré par Anthropic, faisant tomber toute la couche IA — corrigé par cette centralisation.)*
 - **Groq Whisper** (`whisper-large-v3-turbo`) pour la transcription FR.
-- **Mode single-user** : auth bypassée (`ATG_USER_ID` dans [lib/atg.ts](lib/atg.ts)),
-  `middleware.ts` en passthrough, **RLS désactivée** sur les tables (filtres `user_id` gardés
-  côté serveur en défense). Branche d'origine `feat/devis-express-atg`, aujourd'hui sur `main`.
+- **Mode single-user + login** : toutes les données restent sous `ATG_USER_ID`
+  ([lib/atg.ts](lib/atg.ts)), MAIS l'accès est désormais protégé par un **vrai login email +
+  mot de passe** ([lib/auth-gate.ts](lib/auth-gate.ts) + `middleware.ts`, écran `/login`, session
+  signée par cookie) — `middleware.ts` n'est **plus** un passthrough. Filtres `user_id` gardés
+  côté serveur en défense. Branche d'origine `feat/devis-express-atg`, aujourd'hui sur `main`.
 - Hébergement **Vercel**, domaine custom **atg-systeme-30-secondes.ionnyx.fr**.
 
 ---
