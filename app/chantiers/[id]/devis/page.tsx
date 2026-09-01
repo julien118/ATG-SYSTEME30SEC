@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import LogoLink from '@/components/LogoLink'
 import AssistantTicket from '@/components/AssistantTicket'
+import BoutonCompteRendu from '@/components/BoutonCompteRendu'
 import DevisEditeur from './devis-editeur'
 import { ATG_USER_ID } from '@/lib/atg'
 import type { Chantier, Devis, SectionDevis } from '@/lib/types'
@@ -34,6 +35,16 @@ export default async function DevisPage({
   if (!chantierData) redirect('/chantiers')
   const chantier = chantierData as Chantier
 
+  // PDF du compte rendu (persisté dès la génération du rapport, cf.
+  // persistRapportPdf). Pilote le bouton « Compte rendu » : lien court /r/[id]
+  // si le PDF est prêt, sinon repli sur l'écran /rapport (toujours ouvrable).
+  const { data: rapportRow } = await supabase
+    .from('rapports')
+    .select('pdf_url')
+    .eq('chantier_id', params.id)
+    .maybeSingle()
+  const pdfPret = !!((rapportRow?.pdf_url as string | null) ?? '').trim()
+
   const { data: devisData } = await supabase
     .from('devis')
     .select('*')
@@ -52,7 +63,10 @@ export default async function DevisPage({
             </svg>
           </Link>
           <LogoLink width={120} height={28} />
-          <AssistantTicket className="ml-auto" />
+          <div className="ml-auto flex items-center gap-1">
+            <BoutonCompteRendu chantierId={params.id} pdfPret={pdfPret} />
+            <AssistantTicket />
+          </div>
         </header>
         <main className="flex-1 px-5 py-10 max-w-md mx-auto text-center">
           <p className="text-sm text-gray-500 mb-4">
@@ -91,7 +105,10 @@ export default async function DevisPage({
             Devis - {chantier.client_nom}
           </p>
         </div>
-        <AssistantTicket className="shrink-0" />
+        <div className="shrink-0 flex items-center gap-1">
+          <BoutonCompteRendu chantierId={params.id} pdfPret={pdfPret} />
+          <AssistantTicket />
+        </div>
       </header>
 
       <DevisEditeur

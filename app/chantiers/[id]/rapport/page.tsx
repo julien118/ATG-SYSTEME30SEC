@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import LogoLink from '@/components/LogoLink'
 import AssistantTicket from '@/components/AssistantTicket'
+import BoutonVoirDevis from '@/components/BoutonVoirDevis'
 import RapportClient from './rapport-client'
 import { ATG_USER_ID } from '@/lib/atg'
 import { formaterHeureVisite } from '@/lib/utils'
@@ -55,7 +56,10 @@ export default async function RapportPage({ params }: { params: { id: string } }
           <LogoLink width={120} height={28} />
           <p className="text-xs text-gray-300 truncate">{chantier.client_nom}</p>
         </div>
-        <AssistantTicket className="shrink-0" />
+        <div className="shrink-0 flex items-center gap-1">
+          {aDevis ? <BoutonVoirDevis chantierId={params.id} /> : null}
+          <AssistantTicket />
+        </div>
       </header>
 
       <RapportClient
