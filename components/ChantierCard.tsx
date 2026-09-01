@@ -31,8 +31,11 @@ function formatDate(dateStr: string | null) {
 }
 
 function getChantierHref(chantier: Chantier, statutAffiche: StatutAffiche) {
-  // Section Devis (Devis en cours / Devis envoye) : la carte mene directement a
-  // l'ecran du devis pour le CONTINUER (sans jamais regenerer).
+  // Devis DEJA envoye sur Costructor : la carte mene a la VISUALISATION du devis
+  // realise (recap), pas au formulaire de proposition technique. Olivier veut
+  // revoir le devis tel qu'il l'a envoye, pas revenir dans l'editeur.
+  if (statutAffiche === 'devis_envoye') return `/chantiers/${chantier.id}/devis/recap`
+  // Devis EN COURS : on ouvre l'ecran du devis pour le CONTINUER (sans regenerer).
   if (sectionDe(statutAffiche) === 'devis') return `/chantiers/${chantier.id}/devis`
   // Généré ou Terminé : on ouvre le compte rendu (pas le formulaire d'edition).
   if (chantier.statut === 'rapport_genere' || chantier.statut === 'termine') {
