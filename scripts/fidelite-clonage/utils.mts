@@ -148,3 +148,33 @@ export const MODELE_FABRIQUE: LigneModele[] = [
     ],
   },
 ]
+
+// ---------- Modele FABRIQUE RAVALEMENT (test hors-ligne A6 mixte) ----------
+// Second modele mono-famille, cette fois RAVALEMENT (finition I3 peinture au m²,
+// TVA 10 % pleine, product.id DISTINCTS de l'ITE). Il fournit un MOTIF DE FAÇADE
+// different de celui du modele ITE (MODELE_FABRIQUE) : c'est ce qui permet, dans
+// le test mixte, de verifier qu'une facade ravalement clone bien SON motif (pas
+// celui de l'ITE) et inversement. Structure volontairement proche pour que seuls
+// les postes de mur different (prod_rav vs prod_ite/prod_pse).
+export const MODELE_FABRIQUE_RAVALEMENT: LigneModele[] = [
+  { type: 'text', position: 0, description: 'QUALIFICATIONS ATG - Qualibat 6111' },
+  {
+    type: 'group', position: 1, description: 'Installation',
+    lines: [
+      { type: 'product', position: 0, description: 'Echafaudage Comabi R200', sellPrice: 1000, quantity: 1, tax: TX10, unit: M2, product: { id: 'prod_ech', name: 'echafaudage' } },
+    ],
+  },
+  {
+    type: 'group', position: 2, description: 'Façade',
+    lines: [
+      { type: 'product', position: 0, description: 'Ravalement I3 peinture Virtuotech', sellPrice: 4000, quantity: 1, tax: TX10, unit: M2, product: { id: 'prod_rav', name: 'ravalement I3' } },
+      { type: 'product', position: 1, description: 'Dessous de toit', sellPrice: 2000, quantity: 1, tax: TX10, unit: ML, product: { id: 'prod_dst', name: 'dessous de toit' } },
+    ],
+  },
+  {
+    type: 'group', position: 3, description: 'Éco-contribution',
+    lines: [
+      { type: 'product', position: 0, description: 'Eco-contribution DEEE', sellPrice: 500, quantity: 1, tax: TX10, unit: U, product: { id: 'prod_eco', name: 'eco' } },
+    ],
+  },
+]

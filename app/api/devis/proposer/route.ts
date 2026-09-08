@@ -12,10 +12,11 @@ import { reportError } from '@/lib/monitoring'
 import { listerArticlesBibliotheque } from '@/lib/costructor'
 import { ATG_USER_ID } from '@/lib/atg'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { choisirModele, type ModeleDevis } from '@/lib/atg-routing'
+import { choisirModele, choisirModelePourFacade, type ModeleDevis } from '@/lib/atg-routing'
 import {
   compteCibleCostructor,
   deriverSectionsDepuisModele,
+  deriverSectionsMixte,
   extraireMetres,
   lireModeleExpand,
   listerModelesCible,
@@ -32,11 +33,25 @@ import type {
 
 export async function POST(request: Request) {
   try {
-    const { chantierId, regenerer, modeleId: modeleIdChoisi } = (await request.json()) as {
+    const {
+      chantierId,
+      regenerer,
+      modeleId: modeleIdChoisi,
+      overridesFacade,
+      apercu,
+    } = (await request.json()) as {
       chantierId?: string
       regenerer?: boolean
-      // Modèle imposé par Olivier via le sélecteur (override de l'auto-détection).
+      // Modèle imposé par Olivier via le sélecteur global (override du modèle de base).
       modeleId?: string
+      // Moteur MIXTE : traitement imposé par Olivier PAR FAÇADE (sélecteur par
+      // façade au récap), clé = nom de façade normalisé, valeur = 'ite'|'i3'|'i4'|'d2'.
+      // Prime sur le traitement déduit par l'IA. Sa présence = re-dérivation voulue.
+      overridesFacade?: Record<string, string>
+      // Mode APERÇU (essai à blanc) : calcule tout comme une vraie régénération
+      // mais N'ÉCRIT RIEN et NE POUSSE RIEN. Sert à visualiser le résultat sans
+      // que rien n'apparaisse côté Olivier ni dans Costructor.
+      apercu?: boolean
     }
     if (!chantierId) {
       return NextResponse.json({ error: 'chantierId manquant' }, { status: 400 })
@@ -61,9 +76,11 @@ export async function POST(request: Request) {
     // remplacements d'articles). On renvoie le devis existant tel quel, SANS toucher
     // a sections_finales et SANS appeler Claude. La regeneration n'a lieu que si elle
     // est demandee EXPLICITEMENT (regenerer === true). Filet serveur, en plus de l'UI.
-    // Switch de modèle explicite (modeleIdChoisi) = re-dérivation volontaire
-    // (l'UI confirme côté Olivier avant d'écraser d'éventuels métrés).
-    if (!regenerer && !modeleIdChoisi) {
+    // Switch de modèle explicite (modeleIdChoisi) ou d'un traitement par façade
+    // (overridesFacade) = re-dérivation volontaire (l'UI confirme côté Olivier
+    // avant d'écraser d'éventuels métrés).
+    const overrideFacadePresent = !!overridesFacade && Object.keys(overridesFacade).length > 0
+    if (!regenerer && !modeleIdChoisi && !overrideFacadePresent && !apercu) {
       const { data: existant } = await supabase
         .from('devis')
         .select('id, sections_finales, sections_proposees')
@@ -139,7 +156,8 @@ export async function POST(request: Request) {
           : choix.modeleId
 
       if (modeleEffectifId) {
-        const modele = await lireModeleExpand(modeleEffectifId)
+        // Modèle de BASE (transversal / éco / préalables + fallback de façade).
+        const modeleBase = await lireModeleExpand(modeleEffectifId)
         // Noms de façades depuis la dictée (quantités saisies ensuite par Olivier).
         // À défaut, une façade générique : on clone le modèle plutôt que de
         // retomber sur l'IA (Olivier renomme/duplique ensuite si besoin).
@@ -149,7 +167,73 @@ export async function POST(request: Request) {
           .filter((n) => n.length > 0)
         if (nomsFacades.length === 0) nomsFacades = ['Façade']
 
-        let sectionsClonage = deriverSectionsDepuisModele(modele.lines ?? [], nomsFacades)
+        // ---- Routing PAR FAÇADE (moteur MIXTE) ----
+        // Chaque façade est routée vers le modèle d'Olivier adapté à SON traitement
+        // (ITE vs ravalement I3/I4/D2). L'override manuel d'Olivier (overridesFacade)
+        // prime sur le traitement déduit par l'IA. Une façade sans traitement
+        // reconnu retombe sur le modèle de base (fallback franc).
+        const routageFacades = metres.facades.map((f) => {
+          const nom = (f.nom ?? '').trim() || 'Façade'
+          const override = overridesFacade?.[nom.toLowerCase().trim()]
+          const traitement = override ?? f.traitement ?? null
+          const choix = choisirModelePourFacade(traitement, nom, modeles)
+          const idFacade =
+            choix.modeleId && modelesDisponibles.some((m) => m.id === choix.modeleId)
+              ? choix.modeleId
+              : modeleEffectifId // fallback = modèle de base
+          return { nom, modeleId: idFacade }
+        })
+
+        // Mixte réel = au moins deux modèles distincts en jeu. Sinon on garde le
+        // chemin mono-modèle historique À L'IDENTIQUE (zéro régression).
+        const idsFacades = new Set(routageFacades.map((r) => r.modeleId))
+        const estMixte = metres.facades.length > 0 && idsFacades.size > 1
+
+        let sectionsClonage: SectionDevis[]
+        let snapshot: ModeleSnapshot
+        if (estMixte) {
+          // Lit chaque modèle distinct (base incluse), dédupliqué et en parallèle.
+          // (on étale le tableau des ids façade, pas le Set — évite le besoin de
+          //  downlevelIteration selon la cible TS du projet)
+          const idsALire = Array.from(
+            new Set([modeleEffectifId, ...routageFacades.map((r) => r.modeleId)]),
+          )
+          const parId = new Map<string, any>()
+          await Promise.all(
+            idsALire.map(async (id) => {
+              parId.set(id, id === modeleEffectifId ? modeleBase : await lireModeleExpand(id))
+            }),
+          )
+          const facadesPourDerive = routageFacades.map((r) => ({
+            nom: r.nom,
+            modeleId: r.modeleId,
+            modeleLines: parId.get(r.modeleId)?.lines ?? [],
+          }))
+          sectionsClonage = deriverSectionsMixte(facadesPourDerive, modeleBase.lines ?? [])
+          // Snapshot COMPOSITE : base = modèle effectif ; modeles = les autres.
+          const modelesSnap: Record<string, { lines: unknown[] }> = {}
+          for (const id of Array.from(idsFacades)) {
+            if (id !== modeleEffectifId) modelesSnap[id] = { lines: parId.get(id)?.lines ?? [] }
+          }
+          snapshot = {
+            id: modeleBase.id ?? modeleEffectifId ?? null,
+            subtotal: modeleBase.subtotal ?? null,
+            lines: modeleBase.lines ?? [],
+            compte: compteCibleCostructor(),
+            ...(Object.keys(modelesSnap).length > 0 ? { modeles: modelesSnap } : {}),
+          }
+        } else {
+          // Chemin mono-modèle historique — INCHANGÉ.
+          sectionsClonage = deriverSectionsDepuisModele(modeleBase.lines ?? [], nomsFacades)
+          snapshot = {
+            id: modeleBase.id ?? null,
+            subtotal: modeleBase.subtotal ?? null,
+            lines: modeleBase.lines ?? [],
+            // Compte source (garde de cohérence au push) : la cible de lecture.
+            compte: compteCibleCostructor(),
+          }
+        }
+
         if (sectionsClonage.length > 0) {
           // ENRICHISSEMENT depuis le rapport (le modèle est le squelette, on y
           // greffe ce qu'Olivier a observé/dicté). Couche 2 : ajouter les points
@@ -177,13 +261,7 @@ export async function POST(request: Request) {
             modeleId: modeleEffectifId,
             libelle:
               modelesDisponibles.find((m) => m.id === modeleEffectifId)?.libelle ?? null,
-            snapshot: {
-              id: modele.id ?? null,
-              subtotal: modele.subtotal ?? null,
-              lines: modele.lines ?? [],
-              // Compte source (garde de cohérence au push) : la cible de lecture.
-              compte: compteCibleCostructor(),
-            },
+            snapshot,
           }
         }
       }
@@ -251,6 +329,20 @@ export async function POST(request: Request) {
           { status: 422 },
         )
       }
+    }
+
+    // MODE APERÇU (essai à blanc) : tout a été calculé EXACTEMENT comme une vraie
+    // régénération, mais on n'écrit RIEN (aucune ligne devis) et on ne pousse RIEN
+    // chez Costructor. Permet de visualiser le résultat sans que rien n'apparaisse
+    // côté Olivier. On renvoie les sections + le détail moteur/modèle.
+    if (apercu) {
+      return NextResponse.json({
+        apercu: true,
+        sections,
+        moteur: clonage ? 'clonage' : 'plat',
+        modeleChoisi: clonage ? { id: clonage.modeleId, libelle: clonage.libelle } : null,
+        modelesDisponibles,
+      })
     }
 
     // Upsert : si un devis existe déjà pour ce chantier, on le remplace.

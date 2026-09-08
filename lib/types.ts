@@ -211,6 +211,15 @@ export interface ModeleSnapshot {
   // Olivier ne peut pas etre pousse sur le compte test, ids propres au compte).
   // Absent (devis anterieurs) => traite comme 'test'.
   compte?: CompteCostructor
+  // Moteur MIXTE-AWARE : quand un chantier melange des facades ITE et ravalement,
+  // chaque facade est clonee depuis un modele DIFFERENT d'Olivier. `lines` reste
+  // le modele de BASE (transversal / eco / prealables + fallback), et `modeles`
+  // porte les modeles ADDITIONNELS utilises par les facades, indexes par leur id
+  // Costructor. Au push, la reconstruction resout le motif de chaque section
+  // facade dans le bon modele via son origine `facade@<modelId>`. Absent =>
+  // devis mono-modele historique (aucun changement de comportement). Tous lus sur
+  // le MEME compte que `lines` (garde de coherence preservee).
+  modeles?: Record<string, { lines: unknown[] }>
 }
 
 export interface Devis {

@@ -347,3 +347,36 @@ export function choisirModele(signal: string, modeles: ModeleDevis[]): ChoixMode
       .map(({ id, libelle, score }) => ({ id, libelle, score })),
   }
 }
+
+// =============================================================
+// Routing PAR FAÇADE (moteur mixte-aware)
+// =============================================================
+// Un chantier réel peut mélanger des façades ITE et des façades ravalement. On
+// route alors CHAQUE façade indépendamment vers le bon devis-modèle d'Olivier,
+// à partir du traitement dicté pour cette façade ('ite' | 'i3' | 'i4' | 'd2').
+// On réutilise `choisirModele` en lui fabriquant un SIGNAL ciblé façade : des
+// tokens choisis pour (a) déclencher les regex de MOTS_TYPE_MODELE côté signal
+// ET (b) matcher le nom/description du bon modèle côté cible (ex. 'ite' -> modèle
+// « Isolation thermique… », 'i3' -> « Ravalement I3 peinture »).
+const SIGNAL_TRAITEMENT: Record<string, string> = {
+  ite: "ite isolation thermique isolation par l'exterieur pse polystyrene",
+  i3: 'i3 ravalement peinture virtuotech',
+  i4: 'i4 ravalement taloche entoilage',
+  d2: 'd2 ravalement peinture decorative',
+}
+
+// Choisit le modèle d'Olivier le plus adapté à UNE façade. `traitement` = valeur
+// dictée normalisée ('ite'|'i3'|'i4'|'d2') ou null/inconnu. Si le traitement est
+// absent/inconnu, le signal se réduit au nom de façade -> score 0 -> modeleId
+// null : l'appelant retombe alors sur le modèle de base (fallback franc, jamais
+// de devinette silencieuse).
+export function choisirModelePourFacade(
+  traitement: string | null | undefined,
+  nomFacade: string,
+  modeles: ModeleDevis[],
+): ChoixModele {
+  const t = (traitement ?? '').toLowerCase().trim()
+  const tokens = SIGNAL_TRAITEMENT[t] ?? ''
+  const signal = `${tokens} ${nomFacade ?? ''}`.trim()
+  return choisirModele(signal, modeles)
+}
