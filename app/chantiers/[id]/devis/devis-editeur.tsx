@@ -73,6 +73,12 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
   const [switchModeleEnCours, setSwitchModeleEnCours] = useState(false)
   const [etapeSwitch, setEtapeSwitch] = useState(0)
   const [confirmSwitchId, setConfirmSwitchId] = useState<string | null>(null)
+  // Moteur MIXTE : traitement imposé PAR FAÇADE (sélecteur par section façade).
+  // Clé = nom de façade normalisé, valeur = 'ite'|'i3'|'i4'|'d2'. Accumulé pour
+  // que chaque reconstruction garde les corrections précédentes. `confirmTraitement`
+  // = changement en attente de confirmation (si Olivier a déjà modifié).
+  const [overridesFacade, setOverridesFacade] = useState<Record<string, string>>({})
+  const [confirmTraitement, setConfirmTraitement] = useState<{ nom: string; traitement: string } | null>(null)
   const [etat, setEtat] = useState<EtatMicro>('pret')
   const [duree, setDuree] = useState(0)
   const [animKeys, setAnimKeys] = useState<Record<string, boolean>>({})
@@ -225,6 +231,72 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
     if (!id || id === modeleCourant || switchModeleEnCours) return
     if (aModifieRef.current) setConfirmSwitchId(id)
     else void appliquerModele(id)
+  }
+
+  // ---------- Traitement PAR FAÇADE (moteur mixte) ----------
+  // Une section est une FAÇADE si ses articles portent une ref modèle « facade… »
+  // (mono `facade:` ou composite `facade@<id>:`). Seules ces sections reçoivent le
+  // sélecteur de traitement (ITE / I3 / I4 / D2).
+  function estSectionFacade(s: SectionDevis): boolean {
+    return s.articles.some((a) => (a.ref_modele ?? '').startsWith('facade'))
+  }
+
+  // Traitement affiché pour une façade : l'override d'Olivier prime, sinon on
+  // déduit de façon best-effort des libellés/descriptions des postes présents.
+  function traitementAffiche(s: SectionDevis): string {
+    const key = s.nom.toLowerCase().trim()
+    if (overridesFacade[key]) return overridesFacade[key]
+    const t = s.articles
+      .map((a) => normaliserRecherche(`${a.libelle} ${a.description_technique ?? ''}`))
+      .join(' | ')
+    if (/isolation thermique|\bite\b|isolant|\bpse\b|polystyr|starsystem/.test(t)) return 'ite'
+    if (/\bi4\b|entoilage complet|taloch/.test(t)) return 'i4'
+    if (/\bd2\b|decorative/.test(t)) return 'd2'
+    return 'i3'
+  }
+
+  // Reconstruit la proposition en tenant compte des traitements imposés par façade.
+  async function appliquerOverridesFacade(nouveaux: Record<string, string>) {
+    if (switchModeleEnCours) return
+    setConfirmTraitement(null)
+    setSwitchModeleEnCours(true)
+    setEtapeSwitch(0)
+    const it = setInterval(
+      () => setEtapeSwitch((e) => Math.min(e + 1, ETAPES_MODELE.length - 1)),
+      1200,
+    )
+    annulerAutoSave()
+    try {
+      const res = await fetchWithTimeout('/api/devis/proposer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chantierId, overridesFacade: nouveaux }),
+      }, 60000)
+      const data = await res.json()
+      if (!res.ok || !Array.isArray(data.sections)) {
+        throw new Error(data.error ?? 'Changement de traitement impossible')
+      }
+      setSections(data.sections)
+      sectionsRef.current = data.sections
+      setOverridesFacade(nouveaux)
+      if (data.modeleChoisi?.id) setModeleCourant(data.modeleChoisi.id)
+      aModifieRef.current = false
+      toast.show('Proposition reconstruite avec le traitement par façade.', 'success')
+    } catch (e) {
+      toast.show((e as Error).message, 'error')
+    } finally {
+      clearInterval(it)
+      setSwitchModeleEnCours(false)
+    }
+  }
+
+  function demanderChangementTraitement(nom: string, traitement: string) {
+    if (!traitement || switchModeleEnCours) return
+    const key = nom.toLowerCase().trim()
+    if (overridesFacade[key] === traitement) return
+    const nouveaux = { ...overridesFacade, [key]: traitement }
+    if (aModifieRef.current) setConfirmTraitement({ nom, traitement })
+    else void appliquerOverridesFacade(nouveaux)
   }
 
   // ---------- Auto-save des metres manuels (etape D) ----------
@@ -1045,6 +1117,42 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
             </div>
           )}
 
+          {/* Confirmation avant de reconstruire après changement de traitement d'une façade. */}
+          {confirmTraitement && (
+            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+              <div
+                className="absolute inset-0 bg-black/40"
+                onClick={() => setConfirmTraitement(null)}
+              />
+              <div className="relative w-full sm:max-w-sm bg-white rounded-t-2xl sm:rounded-2xl p-6 pb-safe animate-slide-up sm:animate-scale-in">
+                <h3 className="text-lg font-bold text-foreground mb-2">Changer le traitement ?</h3>
+                <p className="text-gray-500 text-sm mb-6">
+                  La proposition sera reconstruite avec le traitement choisi pour «&nbsp;
+                  {confirmTraitement.nom}&nbsp;». Vos modifications en cours seront remplacées.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() =>
+                      appliquerOverridesFacade({
+                        ...overridesFacade,
+                        [confirmTraitement.nom.toLowerCase().trim()]: confirmTraitement.traitement,
+                      })
+                    }
+                    className="btn-primary w-full"
+                  >
+                    Reconstruire
+                  </button>
+                  <button
+                    onClick={() => setConfirmTraitement(null)}
+                    className="btn-tertiary w-full"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {sections.map((s, sIdx) => (
             <section
               key={`${s.nom}-${sIdx}`}
@@ -1163,6 +1271,32 @@ export default function DevisEditeur({ chantierId, devisId, sectionsInitiales, p
                       Supprimer la section
                     </button>
                   </div>
+                  {/* Ligne 3 : traitement de CETTE façade (moteur mixte). Le
+                      changer reconstruit la proposition en clonant le bon modèle
+                      pour cette façade (ITE vs ravalement), sans toucher aux
+                      autres. Affiché seulement sur les sections façade. */}
+                  {estSectionFacade(s) && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <label
+                        htmlFor={`traitement-${sIdx}`}
+                        className="text-[11px] font-medium text-gray-500"
+                      >
+                        Traitement de cette façade
+                      </label>
+                      <select
+                        id={`traitement-${sIdx}`}
+                        value={traitementAffiche(s)}
+                        disabled={switchModeleEnCours}
+                        onChange={(e) => demanderChangementTraitement(s.nom, e.target.value)}
+                        className="input-ionnyx text-xs py-1.5 disabled:opacity-50"
+                      >
+                        <option value="ite">Isolation (ITE)</option>
+                        <option value="i3">Ravalement I3 (peinture)</option>
+                        <option value="i4">Ravalement I4 (taloché / entoilage)</option>
+                        <option value="d2">Peinture décorative (D2)</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
               <ul className="space-y-5">

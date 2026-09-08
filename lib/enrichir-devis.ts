@@ -79,6 +79,7 @@ ${rapport}
 Voici les POSTES du devis (déjà structurés à partir du modèle d'Olivier). Pour CHAQUE poste, rédige une description de 90 à 150 caractères MAXIMUM, ancrée sur CE chantier :
 - Le libellé porte déjà toute la technique : ta description AJOUTE le contexte de la façade/zone concernée (état observé, exposition, pourquoi ce poste ici), elle NE recopie PAS le libellé.
 - Nomme la façade/zone (Sud, Nord, Pignon...) et l'état observé quand c'est pertinent. Différencie les façades (Sud : soleil, farinage ; Nord : humidité, mousses ; Pignon : vents, fissures).
+- CHANTIER POSSIBLEMENT MIXTE : certaines façades peuvent être en ISOLATION (ITE) et d'autres en RAVALEMENT/peinture. Décris le poste RÉELLEMENT porté par la ligne (son libellé fait foi) : ne parle JAMAIS d'isolation/ITE sur un poste de peinture/ravalement, ni de peinture seule sur un poste d'isolation. Respecte le traitement propre à chaque façade.
 - Vocabulaire ravalement strict. Repères produits/normes si utiles (I3/I4, DTU 42.1, Virtuotech, Baumit, Comabi).
 - INTERDIT : remplissage générique ("dans les règles de l'art", "pour une finition optimale"), recopier le libellé, prix, durée, em-dash.
 - Si une observation précise concerne ce poste, exploite-la ; sinon reste sobre et factuel sur la zone.

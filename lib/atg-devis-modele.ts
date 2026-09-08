@@ -137,8 +137,32 @@ export type LignePayload =
       taxRate?: number
     } & ChampsOuvrage)
 
+// Traitement d'une façade (moteur MIXTE-AWARE). Un chantier réel peut mélanger
+// des façades en ITE (isolation par l'extérieur) et d'autres en ravalement
+// (finition peinture/taloché). Ce champ, déduit de la dictée façade par façade,
+// sert à router CHAQUE façade vers le BON devis-modèle d'Olivier (une façade ITE
+// clone son motif dans le modèle ITE, une façade ravalement dans le modèle
+// ravalement). Valeurs = exactement les options du sélecteur UI par façade :
+//   'ite' = isolation thermique extérieure (PSE / système)
+//   'i3'  = ravalement I3 (peinture)
+//   'i4'  = ravalement I4 (taloché / entoilage complet)
+//   'd2'  = peinture décorative D2 (soubassement, déco)
+// famille dérivée : 'ite' -> ITE ; i3/i4/d2 -> ravalement.
+export type TraitementFacade = 'ite' | 'i3' | 'i4' | 'd2'
+
+export const TRAITEMENTS_FACADE: TraitementFacade[] = ['ite', 'i3', 'i4', 'd2']
+
+export function familleDuTraitement(t: TraitementFacade | null | undefined): 'ite' | 'ravalement' | null {
+  if (t == null) return null
+  return t === 'ite' ? 'ite' : 'ravalement'
+}
+
 export interface MetresFacade {
   nom: string
+  // Traitement dicté pour CETTE façade (null si non déductible : l'orchestration
+  // retombe alors sur le modèle de base). Piloté par la dictée puis corrigeable
+  // par Olivier au récap (sélecteur par façade).
+  traitement?: TraitementFacade | null
   surface_m2?: number | null // mur principal : ravalement OU système ITE + isolant
   dessous_toit_ml?: number | null
   appuis_ml?: number | null
@@ -386,6 +410,7 @@ Réponds STRICTEMENT en JSON valide (sans markdown, sans texte autour), schéma 
   "facades": [
     {
       "nom": "<nom de la façade tel que dicté, ex: Façade Sud, Pignon Est, Façade principale>",
+      "traitement": "<le traitement DE CETTE façade : 'ite' | 'i3' | 'i4' | 'd2', ou null si non dit>",
       "surface_m2": <surface du mur principal à traiter/isoler, ou null>,
       "dessous_toit_ml": <ml ou null>,
       "appuis_ml": <ml d'appuis de fenêtres ou null>,
@@ -408,6 +433,13 @@ Réponds STRICTEMENT en JSON valide (sans markdown, sans texte autour), schéma 
 
 RÈGLES :
 - Une entrée "facades" par façade nommée. Toute mesure non dictée pour une façade = null. N'invente aucun chiffre.
+- "traitement" : déduis, POUR CHAQUE FAÇADE INDÉPENDAMMENT, le type de travaux dicté. Un même chantier peut MÉLANGER des façades ITE et des façades ravalement — ne suppose JAMAIS un traitement unique pour tout le chantier.
+  • 'ite' si la façade est ISOLÉE par l'extérieur (mots : isoler, isolation, PSE, polystyrène, panneau isolant, "140 mm"/"14 cm" d'isolant, R=…, système extérieur, StarSystem/Baumit).
+  • 'i3' si ravalement/finition I3 (peinture I3, Virtuotech I3).
+  • 'i4' si ravalement I4 (taloché I4, entoilage complet).
+  • 'd2' si peinture décorative D2 seule (soubassement conservé en peinture, D2 déco) sans isolation ni I3/I4.
+  • null si vraiment indéterminable. En cas de doute entre ITE et ravalement, tranche sur la présence/absence d'isolant.
+  Exemple (chantier mixte réel) : « façade nord cuisine à isoler en PSE 140 » -> 'ite' ; « retour : finition I3 peinture » -> 'i3' ; « façade ouest, isolation 14 cm » -> 'ite' ; « façade sud, entoilage complet système I4 » -> 'i4'.
 - "surface_m2" = la surface du mur (ravalement ou ITE). En ITE, l'isolant et le système couvrent cette même surface.
 - CHAQUE poste a SA PROPRE quantité, même si plusieurs sont cités dans la même phrase. N'utilise jamais un compteur global appliqué à plusieurs postes. Exemple : « un report d'éclairage et un report de robinet » => nb_report_eclairage:1 ET nb_report_robinet:1 (surtout PAS 2 partout). « deux volets et une descente EP » => nb_volets:2 ET nb_descente_ep:1. Lis la portion de phrase propre à chaque poste.
 - "transversal" : remplis échafaudage/lavage/traitement UNIQUEMENT si un total global est dicté ; sinon null (un total = somme des surfaces de façade sera calculé en aval).
@@ -434,8 +466,20 @@ export async function extraireMetres(dictee: string): Promise<MetresDevis> {
     0,
   )
   const t = parsed.transversal ?? {}
+  // Normalise le traitement dicté par façade : on n'accepte que les 4 valeurs
+  // connues, tout le reste (absent, faute, inattendu) -> null (fallback modèle
+  // de base au routing). On ne fait jamais échouer la génération sur ce champ.
+  const facades = (parsed.facades ?? []).map((f) => {
+    const brut = String((f as { traitement?: unknown }).traitement ?? '')
+      .toLowerCase()
+      .trim()
+    const traitement = (TRAITEMENTS_FACADE as string[]).includes(brut)
+      ? (brut as TraitementFacade)
+      : null
+    return { ...f, traitement }
+  })
   return {
-    facades: parsed.facades ?? [],
+    facades,
     transversal: {
       echafaudage_m2: (t.echafaudage_m2 ?? sommeSurfaces) || null,
       lavage_m2: (t.lavage_m2 ?? sommeSurfaces) || null,
@@ -449,6 +493,25 @@ export async function extraireMetres(dictee: string): Promise<MetresDevis> {
 
 const ordonner = (lignes: LigneModele[] | undefined): LigneModele[] =>
   [...(lignes ?? [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+
+// Origine (préfixe de `ref_modele`) d'une section façade. Moteur MIXTE : une
+// façade peut être clonée depuis un modèle DIFFÉRENT d'une autre, donc l'origine
+// porte l'id du modèle source -> `facade@<modelId>`. Sans modelId (chemin
+// mono-modèle historique) -> 'facade' tout court. RÉTRO-COMPAT : les refs déjà en
+// base sont `facade:pid#k` (sans `@modelId`) ; `origineSection` coupe au 1er ':'
+// donc le `@modelId` reste dans le segment d'origine, et `fabriquerResolveur`
+// reconstruit exactement la même clé. Aucune autre logique de parsing à changer :
+// c'est le SEUL point de format de l'origine façade composite.
+export function origineFacade(modelId?: string | null): string {
+  return modelId ? `facade@${modelId}` : 'facade'
+}
+
+// Extrait l'id de modèle d'une origine façade composite (`facade@<modelId>`),
+// ou null pour une origine legacy (`facade`) ou non-façade (`entete`/`eco`/...).
+export function modelIdDeOrigine(origine: string): string | null {
+  const m = origine.match(/^facade@(.+)$/)
+  return m ? m[1] : null
+}
 
 // Recopie la TVA d'une ligne modele sur la ligne du devis (meme compte, donc
 // l'id de taxe reste valide). On privilegie l'objet tax (id), a defaut on
@@ -625,6 +688,16 @@ function classifierGroupe(
   if (roles.some((r) => ['echafaudage', 'lavage', 'traitement'].includes(r)))
     return 'entete'
   return 'autre'
+}
+
+// Premier groupe racine « façade » d'un arbre de modèle (le motif de façade que
+// le modèle répète pour chaque façade). null si le modèle n'a aucun groupe
+// façade. Utilisé par le moteur mixte (dérivation + reconstruction au push).
+function premierGroupeFacade(lines: LigneModele[] | undefined): LigneModele | null {
+  for (const l of ordonner(lines)) {
+    if (l.type === 'group' && classifierGroupe(l) === 'facade') return l
+  }
+  return null
 }
 
 // Résolveur de quantité pour le bloc transversal (en-tête).
@@ -969,6 +1042,55 @@ export function deriverSectionsDepuisModele(
   return sections
 }
 
+// Variante MIXTE de deriverSectionsDepuisModele : compose un devis dont CHAQUE
+// façade est dérivée de SON PROPRE modèle (une façade ITE clone le motif du
+// modèle ITE, une façade ravalement celui du modèle ravalement). Les groupes
+// transversaux (en-tête élévation/lavage/traitement, éco, autre) viennent du
+// modèle de BASE, une seule fois et dans l'ordre du modèle de base ; à
+// l'emplacement de son 1er groupe façade, on insère les sections façade, chacune
+// dérivée du motif de son modèle propre avec l'origine `facade@<modelId>` (ce qui
+// permettra au push de retrouver le bon motif dans le bon snapshot). Renvoie []
+// si rien d'exploitable (l'appelant retombe alors sur le chemin mono-modèle).
+export function deriverSectionsMixte(
+  facades: Array<{ nom: string; modeleLines: LigneModele[]; modeleId: string }>,
+  modeleBaseLines: LigneModele[],
+): SectionDevis[] {
+  const sections: SectionDevis[] = []
+  const emettreFacades = () => {
+    for (const f of facades) {
+      const grp = premierGroupeFacade(f.modeleLines)
+      if (!grp) continue
+      const articles = produitsEnArticles(grp.lines, origineFacade(f.modeleId))
+      if (articles.length > 0) sections.push({ nom: f.nom, articles })
+    }
+  }
+  let facadesEmises = false
+  for (const ligne of ordonner(modeleBaseLines)) {
+    if (ligne.type !== 'group') continue
+    const classe = classifierGroupe(ligne)
+    if (classe === 'facade') {
+      // 1er emplacement façade du modèle de base = là où s'insèrent les façades
+      // (les groupes façade suivants du base sont des doublons du motif -> ignorés).
+      if (!facadesEmises) {
+        emettreFacades()
+        facadesEmises = true
+      }
+    } else {
+      const articles = produitsEnArticles(ligne.lines, classe)
+      if (articles.length > 0) {
+        sections.push({
+          nom: stripHtml(ligne.description ?? '') || classe.toUpperCase(),
+          articles,
+        })
+      }
+    }
+  }
+  // Filet : si le modèle de base n'a aucun groupe façade, on n'a pas d'emplacement
+  // où insérer — on émet alors les façades en fin (elles ne doivent jamais sauter).
+  if (!facadesEmises) emettreFacades()
+  return sections
+}
+
 // ---------- Pré-remplissage des quantités dictées (couche 3) ----------
 // Remplit, sur les sections clonées de la proposition, les quantités QUE le pro a
 // dictées (façade par façade + transversal + points singuliers), pour qu'Olivier
@@ -1159,7 +1281,12 @@ function sectionPlate(s: SectionDevis, taxDominant?: string): LignePayload {
 // les origines (une facade peut passer avant le transversal). On ne pousse jamais
 // un groupe vide (rendu casse chez Olivier).
 export function reconstruireDepuisSnapshot(
-  snapshot: { lines?: unknown[] },
+  snapshot: {
+    id?: string | null
+    lines?: unknown[]
+    // Moteur MIXTE : motifs façade des modèles ADDITIONNELS, indexés par id.
+    modeles?: Record<string, { lines?: unknown[] }>
+  },
   sectionsFinales: SectionDevis[],
 ): LignePayload[] {
   const modeleLines = (snapshot.lines ?? []) as LigneModele[]
@@ -1170,11 +1297,30 @@ export function reconstruireDepuisSnapshot(
   // chaque classe (facade / entete / eco / autre). Reutilise par sectionVersGroupe
   // pour chaque section d'Olivier de cette origine (les groupes doublons du
   // modele — ex motif facade repete — sont ignores : seul le 1er sert de motif).
+  //
+  // Moteur MIXTE : en plus des clés de classe (chemin mono-modele, origine
+  // `facade`/`entete`/`eco`/`autre`), on indexe le motif FAÇADE de chaque modele
+  // par sa clé composite `facade@<modelId>` — celui du modele de BASE (via
+  // snapshot.id, pour les façades routees vers lui) ET ceux des modeles
+  // ADDITIONNELS (snapshot.modeles). origineSection renvoie l'origine COMPLETE, le
+  // lookup tombe donc juste dans les deux cas. Un snapshot sans `modeles` (devis
+  // historiques) se comporte a l'identique : seule la clé de classe `facade` sert.
   const motifParOrigine = new Map<string, LigneModele>()
   for (const ligne of ord) {
     if (ligne.type === 'group' && groupeAProduits(ligne)) {
       const classe = classifierGroupe(ligne)
       if (!motifParOrigine.has(classe)) motifParOrigine.set(classe, ligne)
+      if (classe === 'facade' && snapshot.id) {
+        const cle = origineFacade(snapshot.id)
+        if (!motifParOrigine.has(cle)) motifParOrigine.set(cle, ligne)
+      }
+    }
+  }
+  // Modeles additionnels : chaque motif façade indexe par `facade@<modelId>`.
+  if (snapshot.modeles) {
+    for (const [modelId, m] of Object.entries(snapshot.modeles)) {
+      const grp = premierGroupeFacade((m?.lines ?? []) as LigneModele[])
+      if (grp) motifParOrigine.set(origineFacade(modelId), grp)
     }
   }
 
